@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Test_Assignment_1" type="CompoundRunConfigurationType">
+    <toRun name="Test_Rejoin" type="GoTestRunConfiguration" />
+    <toRun name="Test_FailNoAgree" type="GoTestRunConfiguration" />
+    <toRun name="Test_Persist" type="GoTestRunConfiguration" />
+    <toRun name="Test_ConcurrentStarts" type="GoTestRunConfiguration" />
+    <toRun name="Test_Backup" type="GoTestRunConfiguration" />
+    <method v="2" />
+  </configuration>
+</component>

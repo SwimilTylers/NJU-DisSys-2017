@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Test_Rejoin" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="NJU-DisSys-2017" />
+    <working_directory value="$PROJECT_DIR$/src/raft" />
+    <framework value="gotest" />
+    <kind value="PACKAGE" />
+    <package value="raft" />
+    <directory value="$PROJECT_DIR$/" />
+    <filePath value="$PROJECT_DIR$/" />
+    <pattern value="Rejoin" />
+    <method v="2" />
+  </configuration>
+</component>
