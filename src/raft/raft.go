@@ -195,7 +195,7 @@ func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
 			isGranted = args.LastLogIndex >= rf.lastLogIndex && args.LastLogTerm >= rf.log[rf.lastLogIndex].term
 		}
 	} else {
-		isGranted = true
+		isGranted = false
 	}
 
 	return isGranted
@@ -363,13 +363,14 @@ func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries 
 	}
 }
 
-func (rf *Raft) bcHeartBeat(threshold int) {
+func (rf *Raft) bcHeartBeat(threshold int) chan *AppendEntriesReply {
 	collectChan := make(chan *AppendEntriesReply, ChannelSpaceSize)
 	if rf.lastLogIndex == -1 {
 		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, -1, nil, rf.commitIndex, threshold, collectChan)
 	} else {
 		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, nil, rf.commitIndex, threshold, collectChan)
 	}
+	return collectChan
 }
 
 func (rf *Raft) updateCurrentTerm(term int) bool {
@@ -460,7 +461,7 @@ func (rf *Raft) toBeLeader() {
 	log.Println(rf.me, "Be a Leader")
 	threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
-	rf.bcHeartBeat(threshold)
+	collectChan := rf.bcHeartBeat(threshold)
 
 	for rf.role == Leader {
 		select {
@@ -491,8 +492,13 @@ func (rf *Raft) toBeLeader() {
 			}
 			rf.HandleAppendEntries(arg)
 			break
+		case reply := <-collectChan:
+			if rf.updateCurrentTerm(reply.Term) {
+				rf.role = Follower
+			}
+			break
 		case <-time.After(time.Duration(HBInterval) * time.Millisecond):
-			rf.bcHeartBeat(threshold)
+			collectChan = rf.bcHeartBeat(threshold)
 			break
 		}
 	}

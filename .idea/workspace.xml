@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="add test configs">
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/Test_Assignment_1.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/Test_Assignment_1.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/Test_Election.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/Test_Election.xml" afterDir="false" />
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="initElection passes">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/raft/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/config.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/raft.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/raft/test_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/test_test.go" afterDir="false" />
     </list>
@@ -196,6 +193,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="add test configs" />
-    <option name="LAST_COMMIT_MESSAGE" value="add test configs" />
+    <MESSAGE value="initElection passes" />
+    <option name="LAST_COMMIT_MESSAGE" value="initElection passes" />
   </component>
 </project>
