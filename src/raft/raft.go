@@ -382,54 +382,58 @@ func (rf *Raft) toBeCandidate() {
 			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
 		}
 
-		select {
-		case args := <-rf.rvArgsChan:
-			if rf.updateCurrentTerm(args.Term) {
-				rf.role = Follower
-			}
-			if rf.decideIfGranted(args) {
-				rf.role = Follower
-				rf.voteFor = args.CandidateId
-				DPrintln(rf.me, "vote for", rf.voteFor)
-
-				rf.rvArgsReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: true,
+		var reelect bool = false
+		for rf.role == Candidate && !reelect {
+			select {
+			case args := <-rf.rvArgsChan:
+				if rf.updateCurrentTerm(args.Term) {
+					rf.role = Follower
 				}
-			} else {
-				rf.rvArgsReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: false,
-				}
-			}
-			break
-		case reply := <-collectChan:
-			if rf.updateCurrentTerm(reply.Term) {
-				rf.role = Follower
-			} else if reply.VoteGranted {
-				count++
-				if count == threshold {
-					rf.role = Leader
-					rf.bcHeartBeat()
-				}
-			}
-			break
-		case arg := <-rf.aeArgsChan:
-			// second case: receive AE from new leader
-			DPrintln("receive AE:", arg)
-			if arg.Term == rf.currentTerm || rf.updateCurrentTerm(arg.Term) {
-				// at least as large as currentTerm
-				rf.role = Follower
-				rf.voteFor = arg.LeaderId
-			}
+				if rf.decideIfGranted(args) {
+					rf.role = Follower
+					rf.voteFor = args.CandidateId
+					DPrintln(rf.me, "vote for", rf.voteFor)
 
-			rf.HandleAppendEntries(arg)
+					rf.rvArgsReplyChan <- &RequestVoteReply{
+						Term:        rf.currentTerm,
+						VoteGranted: true,
+					}
+				} else {
+					rf.rvArgsReplyChan <- &RequestVoteReply{
+						Term:        rf.currentTerm,
+						VoteGranted: false,
+					}
+				}
+				break
+			case reply := <-collectChan:
+				if rf.updateCurrentTerm(reply.Term) {
+					rf.role = Follower
+				} else if reply.VoteGranted {
+					count++
+					if count == threshold {
+						rf.role = Leader
+						rf.bcHeartBeat()
+					}
+				}
+				break
+			case arg := <-rf.aeArgsChan:
+				// second case: receive AE from new leader
+				DPrintln("receive AE:", arg)
+				if arg.Term == rf.currentTerm || rf.updateCurrentTerm(arg.Term) {
+					// at least as large as currentTerm
+					rf.role = Follower
+					rf.voteFor = arg.LeaderId
+				}
 
-			break
-		case <-time.After(timeout):
-			// third case: timeout
-			DPrintln("timeout")
-			break
+				rf.HandleAppendEntries(arg)
+
+				break
+			case <-time.After(timeout):
+				// third case: timeout
+				DPrintln("timeout")
+				reelect = true
+				break
+			}
 		}
 	}
 }
