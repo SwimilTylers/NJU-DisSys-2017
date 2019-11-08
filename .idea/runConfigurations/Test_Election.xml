@@ -1,5 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Test_Election" type="GoTestRunConfiguration" factoryName="Go Test">
+    <output_file path="$PROJECT_DIR$/test_1.txt" is_save="true" />
     <module name="NJU-DisSys-2017" />
     <working_directory value="$PROJECT_DIR$/src/raft" />
     <framework value="gotest" />
