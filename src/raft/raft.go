@@ -223,7 +223,7 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 	return ok
 }
 
-func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, threshold int, collectChan chan *RequestVoteReply) {
+func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, collectChan chan *RequestVoteReply) {
 	vote := RequestVoteArgs{
 		Term:         term,
 		CandidateId:  rf.me,
@@ -231,28 +231,16 @@ func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, threshol
 		LastLogTerm:  lastLogTerm,
 	}
 
-	granted := 0
-	chanSwitch := true
-
 	log.Println(rf.me, "broadcast:", vote)
 
 	for toId, _ := range rf.peers {
-		if toId == rf.me {
-			continue
-		}
-		var reply RequestVoteReply
-		rf.sendRequestVote(toId, vote, &reply)
-		if reply.VoteGranted {
-			granted++
-			if granted <= threshold && chanSwitch {
+		go func(to int) {
+			if to != rf.me {
+				var reply RequestVoteReply
+				rf.sendRequestVote(to, vote, &reply)
 				collectChan <- &reply
 			}
-
-			chanSwitch = granted < threshold
-		} else if chanSwitch {
-			collectChan <- &reply
-			chanSwitch = false
-		}
+		}(toId)
 	}
 }
 
@@ -329,7 +317,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 	return ok
 }
 
-func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries []Instance, leaderCommit int, threshold int, collectChan chan *AppendEntriesReply) {
+func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries []Instance, leaderCommit int, collectChan chan *AppendEntriesReply) {
 	entry := AppendEntriesArgs{
 		Term:         term,
 		LeaderId:     rf.me,
@@ -339,36 +327,25 @@ func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries 
 		LeaderCommit: leaderCommit,
 	}
 
-	granted := 0
-	chanSwitch := true
+	log.Println(rf.me, "bc AppendEntries:", entry)
 
 	for toId, _ := range rf.peers {
-		if toId == rf.me {
-			continue
-		}
-		var reply AppendEntriesReply
-		rf.sendAppendEntries(toId, entry, &reply)
-
-		if reply.Success {
-			granted++
-			if granted <= threshold && chanSwitch {
+		go func(to int) {
+			if to != rf.me {
+				var reply AppendEntriesReply
+				rf.sendAppendEntries(to, entry, &reply)
 				collectChan <- &reply
 			}
-
-			chanSwitch = granted < threshold
-		} else if chanSwitch {
-			collectChan <- &reply
-			chanSwitch = false
-		}
+		}(toId)
 	}
 }
 
-func (rf *Raft) bcHeartBeat(threshold int) chan *AppendEntriesReply {
+func (rf *Raft) bcHeartBeat() chan *AppendEntriesReply {
 	collectChan := make(chan *AppendEntriesReply, ChannelSpaceSize)
 	if rf.lastLogIndex == -1 {
-		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, -1, nil, rf.commitIndex, threshold, collectChan)
+		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, -1, nil, rf.commitIndex, collectChan)
 	} else {
-		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, nil, rf.commitIndex, threshold, collectChan)
+		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, nil, rf.commitIndex, collectChan)
 	}
 	return collectChan
 }
@@ -377,7 +354,7 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 	if term > rf.currentTerm {
 		rf.currentTerm = term
 		rf.voteFor = VoteForNone
-
+		log.Println(rf.me, "term =", term)
 		return true
 	} else {
 		return false
@@ -401,9 +378,9 @@ func (rf *Raft) toBeCandidate() {
 		collectChan := make(chan *RequestVoteReply, ChannelSpaceSize)
 
 		if rf.lastLogIndex == -1 {
-			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, -1, threshold, collectChan)
+			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, -1, collectChan)
 		} else {
-			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, threshold, collectChan)
+			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
 		}
 
 		select {
@@ -434,6 +411,7 @@ func (rf *Raft) toBeCandidate() {
 				count++
 				if count == threshold {
 					rf.role = Leader
+					rf.bcHeartBeat()
 				}
 			}
 			break
@@ -459,9 +437,9 @@ func (rf *Raft) toBeCandidate() {
 
 func (rf *Raft) toBeLeader() {
 	log.Println(rf.me, "Be a Leader")
-	threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
+	// threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
-	collectChan := rf.bcHeartBeat(threshold)
+	collectChan := rf.bcHeartBeat()
 
 	for rf.role == Leader {
 		select {
@@ -498,7 +476,7 @@ func (rf *Raft) toBeLeader() {
 			}
 			break
 		case <-time.After(time.Duration(HBInterval) * time.Millisecond):
-			collectChan = rf.bcHeartBeat(threshold)
+			collectChan = rf.bcHeartBeat()
 			break
 		}
 	}
