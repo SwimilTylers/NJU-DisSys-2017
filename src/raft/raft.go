@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"log"
 	"math"
 	"math/rand"
 	"sync"
@@ -180,7 +179,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = feedback.Term
 	reply.VoteGranted = feedback.VoteGranted
 
-	log.Println(rf.me, "LEReply", args.CandidateId, ":", reply)
+	DPrintln(rf.me, "LEReply", args.CandidateId, ":", reply)
 }
 
 func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
@@ -231,7 +230,7 @@ func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, collectC
 		LastLogTerm:  lastLogTerm,
 	}
 
-	log.Println(rf.me, "broadcast:", vote)
+	DPrintln(rf.me, "broadcast:", vote)
 
 	for toId, _ := range rf.peers {
 		go func(to int) {
@@ -327,7 +326,7 @@ func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries 
 		LeaderCommit: leaderCommit,
 	}
 
-	log.Println(rf.me, "bc AppendEntries:", entry)
+	DPrintln(rf.me, "bc AppendEntries:", entry)
 
 	for toId, _ := range rf.peers {
 		go func(to int) {
@@ -354,7 +353,7 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 	if term > rf.currentTerm {
 		rf.currentTerm = term
 		rf.voteFor = VoteForNone
-		log.Println(rf.me, "term =", term)
+		DPrintln(rf.me, "term =", term)
 		return true
 	} else {
 		return false
@@ -391,7 +390,7 @@ func (rf *Raft) toBeCandidate() {
 			if rf.decideIfGranted(args) {
 				rf.role = Follower
 				rf.voteFor = args.CandidateId
-				log.Println(rf.me, "vote for", rf.voteFor)
+				DPrintln(rf.me, "vote for", rf.voteFor)
 
 				rf.rvArgsReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
@@ -417,7 +416,7 @@ func (rf *Raft) toBeCandidate() {
 			break
 		case arg := <-rf.aeArgsChan:
 			// second case: receive AE from new leader
-			log.Println("receive AE:", arg)
+			DPrintln("receive AE:", arg)
 			if arg.Term == rf.currentTerm || rf.updateCurrentTerm(arg.Term) {
 				// at least as large as currentTerm
 				rf.role = Follower
@@ -429,14 +428,14 @@ func (rf *Raft) toBeCandidate() {
 			break
 		case <-time.After(timeout):
 			// third case: timeout
-			log.Println("timeout")
+			DPrintln("timeout")
 			break
 		}
 	}
 }
 
 func (rf *Raft) toBeLeader() {
-	log.Println(rf.me, "Be a Leader")
+	DPrintln(rf.me, "Be a Leader")
 	// threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
 	collectChan := rf.bcHeartBeat()
@@ -450,7 +449,7 @@ func (rf *Raft) toBeLeader() {
 			if rf.decideIfGranted(arg) {
 				rf.role = Follower
 				rf.voteFor = arg.CandidateId
-				log.Println(rf.me, "vote for", rf.voteFor)
+				DPrintln(rf.me, "vote for", rf.voteFor)
 
 				rf.rvArgsReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
@@ -483,7 +482,7 @@ func (rf *Raft) toBeLeader() {
 }
 
 func (rf *Raft) toBeFollower() {
-	log.Println(rf.me, "Be a follower")
+	DPrintln(rf.me, "Be a follower")
 
 	for rf.role == Follower {
 		select {
