@@ -29,7 +29,7 @@ import "labrpc"
 // import "encoding/gob"
 
 const InstanceSpaceSize = 5000
-const ChannelSpaceSize = 100
+const ChannelSpaceSize = 32
 
 const VoteForNone = -1
 
@@ -37,7 +37,7 @@ const LETimeoutLBound = 150
 const LETimeoutUBound = 300
 
 const HBInterval = 50
-const HBTimeout = HBInterval * 5
+const HBTimeout = HBInterval * 3
 
 const (
 	Follower uint8 = iota
