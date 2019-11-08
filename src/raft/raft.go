@@ -377,9 +377,9 @@ func (rf *Raft) toBeCandidate() {
 		collectChan := make(chan *RequestVoteReply, ChannelSpaceSize)
 
 		if rf.lastLogIndex == -1 {
-			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, -1, collectChan)
+			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, -1, collectChan)
 		} else {
-			go rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
+			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
 		}
 
 		select {
