@@ -90,9 +90,7 @@ type Raft struct {
 	lastApplied int
 	role        uint8
 
-	rvProcessChan   chan *RequestVoteArgsReplyPair
-	rvArgsChan      chan *RequestVoteArgs
-	rvArgsReplyChan chan *RequestVoteReply
+	rvProcessChan chan *RequestVoteArgsReplyPair
 
 	aeProcessChan   chan *AppendEntriesArgsReplyPair
 	aeArgsChan      chan *AppendEntriesArgs
@@ -176,10 +174,18 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here.
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	/*
+		rf.rvArgsChan <- &args
+		feedback := <-rf.rvArgsReplyChan
+	*/
 
-	rf.rvArgsChan <- &args
-	feedback := <-rf.rvArgsReplyChan
+	rChan := make(chan *RequestVoteReply)
+	rf.rvProcessChan <- &RequestVoteArgsReplyPair{
+		Args:      &args,
+		ReplyChan: rChan,
+	}
 
+	feedback := <-rChan
 	reply.Term = feedback.Term
 	reply.VoteGranted = feedback.VoteGranted
 
@@ -394,7 +400,9 @@ func (rf *Raft) toBeCandidate() {
 		var reelect bool = false
 		for rf.role == Candidate && !reelect {
 			select {
-			case args := <-rf.rvArgsChan:
+			case arPair := <-rf.rvProcessChan:
+				args := arPair.Args
+
 				if rf.updateCurrentTerm(args.Term) {
 					rf.role = Follower
 				}
@@ -403,12 +411,12 @@ func (rf *Raft) toBeCandidate() {
 					rf.voteFor = args.CandidateId
 					DPrintln(rf.me, "vote for", rf.voteFor)
 
-					rf.rvArgsReplyChan <- &RequestVoteReply{
+					arPair.ReplyChan <- &RequestVoteReply{
 						Term:        rf.currentTerm,
 						VoteGranted: true,
 					}
 				} else {
-					rf.rvArgsReplyChan <- &RequestVoteReply{
+					arPair.ReplyChan <- &RequestVoteReply{
 						Term:        rf.currentTerm,
 						VoteGranted: false,
 					}
@@ -455,21 +463,23 @@ func (rf *Raft) toBeLeader() {
 
 	for rf.role == Leader {
 		select {
-		case arg := <-rf.rvArgsChan:
-			if rf.updateCurrentTerm(arg.Term) {
+		case arPair := <-rf.rvProcessChan:
+			args := arPair.Args
+
+			if rf.updateCurrentTerm(args.Term) {
 				rf.role = Follower
 			}
-			if rf.decideIfGranted(arg) {
+			if rf.decideIfGranted(args) {
 				rf.role = Follower
-				rf.voteFor = arg.CandidateId
+				rf.voteFor = args.CandidateId
 				DPrintln(rf.me, "vote for", rf.voteFor)
 
-				rf.rvArgsReplyChan <- &RequestVoteReply{
+				arPair.ReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
 					VoteGranted: true,
 				}
 			} else {
-				rf.rvArgsReplyChan <- &RequestVoteReply{
+				arPair.ReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
 					VoteGranted: false,
 				}
@@ -499,16 +509,17 @@ func (rf *Raft) toBeFollower() {
 
 	for rf.role == Follower {
 		select {
-		case args := <-rf.rvArgsChan:
+		case arPair := <-rf.rvProcessChan:
+			args := arPair.Args
 			rf.updateCurrentTerm(args.Term)
 			if rf.decideIfGranted(args) {
 				rf.voteFor = args.CandidateId
-				rf.rvArgsReplyChan <- &RequestVoteReply{
+				arPair.ReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
 					VoteGranted: true,
 				}
 			} else {
-				rf.rvArgsReplyChan <- &RequestVoteReply{
+				arPair.ReplyChan <- &RequestVoteReply{
 					Term:        rf.currentTerm,
 					VoteGranted: false,
 				}
@@ -599,8 +610,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		lastApplied:     -1,
 		role:            Follower,
 		rvProcessChan:   make(chan *RequestVoteArgsReplyPair),
-		rvArgsChan:      make(chan *RequestVoteArgs),
-		rvArgsReplyChan: make(chan *RequestVoteReply),
 		aeProcessChan:   make(chan *AppendEntriesArgsReplyPair),
 		aeArgsChan:      make(chan *AppendEntriesArgs),
 		aeArgsReplyChan: make(chan *AppendEntriesReply),
