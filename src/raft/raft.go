@@ -90,9 +90,11 @@ type Raft struct {
 	lastApplied int
 	role        uint8
 
+	rvProcessChan   chan *RequestVoteArgsReplyPair
 	rvArgsChan      chan *RequestVoteArgs
 	rvArgsReplyChan chan *RequestVoteReply
 
+	aeProcessChan   chan *AppendEntriesArgsReplyPair
 	aeArgsChan      chan *AppendEntriesArgs
 	aeArgsReplyChan chan *AppendEntriesReply
 
@@ -596,8 +598,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		commitIndex:     -1,
 		lastApplied:     -1,
 		role:            Follower,
+		rvProcessChan:   make(chan *RequestVoteArgsReplyPair),
 		rvArgsChan:      make(chan *RequestVoteArgs),
 		rvArgsReplyChan: make(chan *RequestVoteReply),
+		aeProcessChan:   make(chan *AppendEntriesArgsReplyPair),
 		aeArgsChan:      make(chan *AppendEntriesArgs),
 		aeArgsReplyChan: make(chan *AppendEntriesReply),
 		nextIndex:       make([]int, len(peers)),
