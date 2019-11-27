@@ -91,10 +91,7 @@ type Raft struct {
 	role        uint8
 
 	rvProcessChan chan *RequestVoteArgsReplyPair
-
-	aeProcessChan   chan *AppendEntriesArgsReplyPair
-	aeArgsChan      chan *AppendEntriesArgs
-	aeArgsReplyChan chan *AppendEntriesReply
+	aeProcessChan chan *AppendEntriesArgsReplyPair
 
 	// volatile states, for leaders
 	nextIndex  []int
@@ -291,19 +288,29 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	// Your code here.
-	rf.aeArgsChan <- &args
-	feedback := <-rf.aeArgsReplyChan
+	/*
+		rf.aeArgsChan <- &args
+		feedback := <-rf.aeArgsReplyChan
+	*/
 
+	rChan := make(chan *AppendEntriesReply)
+
+	rf.aeProcessChan <- &AppendEntriesArgsReplyPair{
+		Args:      &args,
+		ReplyChan: rChan,
+	}
+
+	feedback := <-rChan
 	reply.Term = feedback.Term
 	reply.Success = feedback.Success
 }
 
-func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs) {
+func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
 	var success bool = true
 	if args.Term < rf.currentTerm {
 		success = false
 	}
-	rf.aeArgsReplyChan <- &AppendEntriesReply{
+	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
 		Success: success,
 	}
@@ -433,16 +440,18 @@ func (rf *Raft) toBeCandidate() {
 					}
 				}
 				break
-			case arg := <-rf.aeArgsChan:
+			case arPair := <-rf.aeProcessChan:
+				args := arPair.Args
+
 				// second case: receive AE from new leader
-				DPrintln("receive AE:", arg)
-				if arg.Term == rf.currentTerm || rf.updateCurrentTerm(arg.Term) {
+				DPrintln("receive AE:", args)
+				if args.Term == rf.currentTerm || rf.updateCurrentTerm(args.Term) {
 					// at least as large as currentTerm
 					rf.role = Follower
-					rf.voteFor = arg.LeaderId
+					rf.voteFor = args.LeaderId
 				}
 
-				rf.HandleAppendEntries(arg)
+				rf.HandleAppendEntries(args, arPair.ReplyChan)
 
 				break
 			case <-time.After(timeout):
@@ -485,12 +494,14 @@ func (rf *Raft) toBeLeader() {
 				}
 			}
 			break
-		case arg := <-rf.aeArgsChan:
-			if rf.updateCurrentTerm(arg.Term) {
+		case arPair := <-rf.aeProcessChan:
+			args := arPair.Args
+
+			if rf.updateCurrentTerm(args.Term) {
 				rf.role = Follower
-				rf.voteFor = arg.LeaderId
+				rf.voteFor = args.LeaderId
 			}
-			rf.HandleAppendEntries(arg)
+			rf.HandleAppendEntries(args, arPair.ReplyChan)
 			break
 		case reply := <-collectChan:
 			if rf.updateCurrentTerm(reply.Term) {
@@ -525,9 +536,11 @@ func (rf *Raft) toBeFollower() {
 				}
 			}
 			break
-		case arg := <-rf.aeArgsChan:
-			rf.updateCurrentTerm(arg.Term)
-			rf.HandleAppendEntries(arg)
+		case arPair := <-rf.aeProcessChan:
+			args := arPair.Args
+
+			rf.updateCurrentTerm(args.Term)
+			rf.HandleAppendEntries(args, arPair.ReplyChan)
 			break
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
@@ -598,23 +611,21 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	// Your initialization code here.
 	rf := &Raft{
-		mu:              sync.Mutex{},
-		peers:           peers,
-		persister:       persister,
-		me:              me,
-		currentTerm:     0,
-		voteFor:         VoteForNone,
-		log:             make([]Instance, InstanceSpaceSize),
-		lastLogIndex:    -1,
-		commitIndex:     -1,
-		lastApplied:     -1,
-		role:            Follower,
-		rvProcessChan:   make(chan *RequestVoteArgsReplyPair),
-		aeProcessChan:   make(chan *AppendEntriesArgsReplyPair),
-		aeArgsChan:      make(chan *AppendEntriesArgs),
-		aeArgsReplyChan: make(chan *AppendEntriesReply),
-		nextIndex:       make([]int, len(peers)),
-		matchIndex:      make([]int, len(peers)),
+		mu:            sync.Mutex{},
+		peers:         peers,
+		persister:     persister,
+		me:            me,
+		currentTerm:   0,
+		voteFor:       VoteForNone,
+		log:           make([]Instance, InstanceSpaceSize),
+		lastLogIndex:  -1,
+		commitIndex:   -1,
+		lastApplied:   -1,
+		role:          Follower,
+		rvProcessChan: make(chan *RequestVoteArgsReplyPair),
+		aeProcessChan: make(chan *AppendEntriesArgsReplyPair),
+		nextIndex:     make([]int, len(peers)),
+		matchIndex:    make([]int, len(peers)),
 	}
 
 	// initialize from state persisted before a crash
