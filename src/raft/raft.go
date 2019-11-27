@@ -162,6 +162,11 @@ type RequestVoteReply struct {
 	VoteGranted bool
 }
 
+type RequestVoteArgsReplyPair struct {
+	Args      *RequestVoteArgs
+	ReplyChan chan *RequestVoteReply
+}
+
 //
 // example RequestVote RPC handler.
 //
@@ -264,6 +269,11 @@ type AppendEntriesReply struct {
 	// Your data here.
 	Term    int
 	Success bool
+}
+
+type AppendEntriesArgsReplyPair struct {
+	Args      *AppendEntriesArgs
+	ReplyChan chan *AppendEntriesReply
 }
 
 //

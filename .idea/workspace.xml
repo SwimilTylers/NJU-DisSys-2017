@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="fix some bugs in candidate routine&#10;pass Leader tests - after 20 epochs">
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="delete raft.collectChan">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/raft.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/raft/util.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/util.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -216,32 +215,7 @@
     <MESSAGE value="pass Leader tests - after 20 epochs" />
     <MESSAGE value="pass Leader tests - after 25 epochs" />
     <MESSAGE value="fix some bugs in candidate routine&#10;pass Leader tests - after 20 epochs" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix some bugs in candidate routine&#10;pass Leader tests - after 20 epochs" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/src/labrpc/labrpc.go</url>
-          <line>355</line>
-          <option name="timeStamp" value="7" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/src/labrpc/labrpc.go</url>
-          <line>188</line>
-          <option name="timeStamp" value="8" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/src/raft/config.go</url>
-          <line>118</line>
-          <option name="timeStamp" value="11" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
-    <watches-manager>
-      <configuration name="GoTestRunConfiguration">
-        <watch expression="*(*&quot;labrpc.ClientEnd&quot;)(824633740480)" />
-      </configuration>
-    </watches-manager>
+    <MESSAGE value="delete raft.collectChan" />
+    <option name="LAST_COMMIT_MESSAGE" value="delete raft.collectChan" />
   </component>
 </project>
