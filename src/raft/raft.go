@@ -99,9 +99,6 @@ type Raft struct {
 	// volatile states, for leaders
 	nextIndex  []int
 	matchIndex []int
-
-	rvCollectChan chan *RequestVoteReply
-	aeCollectChan chan *AppendEntriesReply
 }
 
 // return currentTerm and whether this server
@@ -595,8 +592,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		aeArgsReplyChan: make(chan *AppendEntriesReply),
 		nextIndex:       make([]int, len(peers)),
 		matchIndex:      make([]int, len(peers)),
-		rvCollectChan:   make(chan *RequestVoteReply, ChannelSpaceSize),
-		aeCollectChan:   make(chan *AppendEntriesReply, ChannelSpaceSize),
 	}
 
 	// initialize from state persisted before a crash
