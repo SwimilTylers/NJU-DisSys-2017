@@ -213,7 +213,9 @@ func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
 		if rf.lastLogIndex == -1 {
 			isGranted = args.LastLogIndex >= -1
 		} else {
-			isGranted = args.LastLogIndex >= rf.lastLogIndex && args.LastLogTerm >= rf.log[rf.lastLogIndex].term
+			isGranted = args.LastLogTerm > rf.log[rf.lastLogIndex].term ||
+				(args.LastLogTerm == rf.log[rf.lastLogIndex].term && args.LastLogIndex >= rf.lastLogIndex)
+			// isGranted = args.LastLogIndex >= rf.lastLogIndex && args.LastLogTerm >= rf.log[rf.lastLogIndex].term
 		}
 	} else {
 		isGranted = false
@@ -353,7 +355,15 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 			rf.log[i] = nil
 		}
 
+		// todo: complete cr receiver
+
 		for idx, entry := range args.Entries {
+			comp := rf.log[startIdx+idx]
+
+			if comp != nil {
+
+			}
+
 			rf.log[startIdx+idx] = entry
 		}
 
@@ -373,6 +383,23 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		Term:    rf.currentTerm,
 		Success: success,
 	}
+}
+
+func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply) {
+	rf.lastLogIndex++
+	rf.log[rf.lastLogIndex] = &Instance{
+		term:        rf.currentTerm,
+		something:   command,
+		isCommitted: false,
+	}
+
+	crRChan <- &ClientRequestReply{
+		IsLeader: true,
+		Term:     rf.currentTerm,
+		Index:    rf.lastLogIndex,
+	}
+
+	// todo: propose ?
 }
 
 //
@@ -553,12 +580,7 @@ func (rf *Raft) toBeLeader() {
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
-			cRequest.ReplyChan <- &ClientRequestReply{
-				IsLeader: true,
-				Term:     rf.currentTerm,
-				Index:    rf.lastLogIndex + 1,
-			}
-			// todo: propose a request now
+			rf.AppendOneEntry(cRequest.Command, cRequest.ReplyChan)
 			break
 		case <-time.After(time.Duration(HBInterval) * time.Millisecond):
 			collectChan = rf.bcHeartBeat()
