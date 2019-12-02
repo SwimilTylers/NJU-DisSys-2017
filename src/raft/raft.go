@@ -285,10 +285,6 @@ func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, collectC
 	}
 }
 
-func (rf *Raft) bcLEVotingParallel(term int, lastLogIndex int, lastLogTerm int) {
-
-}
-
 //
 // example AppendEntries RPC arguments structure.
 //
@@ -350,21 +346,18 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
 
-		// delete conflict entries
-		for i := startIdx; i < rf.lastLogIndex; i++ {
-			rf.log[i] = nil
-		}
-
-		// todo: complete cr receiver
-
 		for idx, entry := range args.Entries {
-			comp := rf.log[startIdx+idx]
+			relIdx := startIdx + idx
 
-			if comp != nil {
-
+			if rf.log[relIdx] == nil {
+				rf.log[relIdx] = entry
+			} else if rf.log[relIdx].term != entry.term {
+				// delete conflict entries
+				for i := relIdx; i < rf.lastLogIndex; i++ {
+					rf.log[i] = nil
+				}
+				rf.log[relIdx] = entry
 			}
-
-			rf.log[startIdx+idx] = entry
 		}
 
 		// update lastLogIndex
