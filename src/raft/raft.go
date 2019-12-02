@@ -327,6 +327,10 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 	var success bool = true
 	if args.Term < rf.currentTerm {
 		success = false
+	} else if args.PrevLogIndex != -1 && rf.log[args.PrevLogIndex].term != args.PrevLogTerm {
+		success = false
+	} else {
+		//todo
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
