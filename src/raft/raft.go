@@ -207,6 +207,24 @@ func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
 	return isGranted
 }
 
+func (rf *Raft) HandleRequestVote(args *RequestVoteArgs, rChan chan *RequestVoteReply) {
+	if rf.decideIfGranted(args) {
+		rf.role = Follower
+		rf.voteFor = args.CandidateId
+		DPrintln(rf.me, "vote for", rf.voteFor)
+
+		rChan <- &RequestVoteReply{
+			Term:        rf.currentTerm,
+			VoteGranted: true,
+		}
+	} else {
+		rChan <- &RequestVoteReply{
+			Term:        rf.currentTerm,
+			VoteGranted: false,
+		}
+	}
+}
+
 //
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
@@ -408,26 +426,10 @@ func (rf *Raft) toBeCandidate() {
 		for rf.role == Candidate && !reelect {
 			select {
 			case arPair := <-rf.rvProcessChan:
-				args := arPair.Args
-
-				if rf.updateCurrentTerm(args.Term) {
+				if rf.updateCurrentTerm(arPair.Args.Term) {
 					rf.role = Follower
 				}
-				if rf.decideIfGranted(args) {
-					rf.role = Follower
-					rf.voteFor = args.CandidateId
-					DPrintln(rf.me, "vote for", rf.voteFor)
-
-					arPair.ReplyChan <- &RequestVoteReply{
-						Term:        rf.currentTerm,
-						VoteGranted: true,
-					}
-				} else {
-					arPair.ReplyChan <- &RequestVoteReply{
-						Term:        rf.currentTerm,
-						VoteGranted: false,
-					}
-				}
+				rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
 				break
 			case reply := <-collectChan:
 				if rf.updateCurrentTerm(reply.Term) {
@@ -473,26 +475,10 @@ func (rf *Raft) toBeLeader() {
 	for rf.role == Leader {
 		select {
 		case arPair := <-rf.rvProcessChan:
-			args := arPair.Args
-
-			if rf.updateCurrentTerm(args.Term) {
+			if rf.updateCurrentTerm(arPair.Args.Term) {
 				rf.role = Follower
 			}
-			if rf.decideIfGranted(args) {
-				rf.role = Follower
-				rf.voteFor = args.CandidateId
-				DPrintln(rf.me, "vote for", rf.voteFor)
-
-				arPair.ReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: true,
-				}
-			} else {
-				arPair.ReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: false,
-				}
-			}
+			rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
 			break
 		case arPair := <-rf.aeProcessChan:
 			args := arPair.Args
@@ -521,26 +507,12 @@ func (rf *Raft) toBeFollower() {
 	for rf.role == Follower {
 		select {
 		case arPair := <-rf.rvProcessChan:
-			args := arPair.Args
-			rf.updateCurrentTerm(args.Term)
-			if rf.decideIfGranted(args) {
-				rf.voteFor = args.CandidateId
-				arPair.ReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: true,
-				}
-			} else {
-				arPair.ReplyChan <- &RequestVoteReply{
-					Term:        rf.currentTerm,
-					VoteGranted: false,
-				}
-			}
+			rf.updateCurrentTerm(arPair.Args.Term)
+			rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
 			break
 		case arPair := <-rf.aeProcessChan:
-			args := arPair.Args
-
-			rf.updateCurrentTerm(args.Term)
-			rf.HandleAppendEntries(args, arPair.ReplyChan)
+			rf.updateCurrentTerm(arPair.Args.Term)
+			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
 			break
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
