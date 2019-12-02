@@ -36,6 +36,8 @@ const VoteForNone = -1
 const LETimeoutLBound = 150
 const LETimeoutUBound = 300
 
+const CRTimeout = 500
+
 const HBInterval = 50
 const HBTimeout = HBInterval * 3
 
@@ -52,6 +54,17 @@ type Instance struct {
 	term        int
 	something   interface{}
 	isCommitted bool
+}
+
+type ClientRequestReply struct {
+	IsLeader bool
+	Term     int
+	Index    int
+}
+
+type ClientRequestArgsReplyPair struct {
+	Command   interface{}
+	ReplyChan chan *ClientRequestReply
 }
 
 //
@@ -82,7 +95,7 @@ type Raft struct {
 	// persistent states
 	currentTerm  int
 	voteFor      int
-	log          []Instance
+	log          []*Instance
 	lastLogIndex int
 
 	// volatile states, for followers
@@ -96,6 +109,10 @@ type Raft struct {
 	// volatile states, for leaders
 	nextIndex  []int
 	matchIndex []int
+
+	// client com
+	crProcessChan chan *ClientRequestArgsReplyPair
+	crApplyChan   chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -255,7 +272,7 @@ func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, collectC
 
 	DPrintln(rf.me, "broadcast:", vote)
 
-	for toId, _ := range rf.peers {
+	for toId := range rf.peers {
 		go func(to int) {
 			if to != rf.me {
 				var reply RequestVoteReply
@@ -279,7 +296,7 @@ type AppendEntriesArgs struct {
 	LeaderId     int
 	PrevLogIndex int
 	PrevLogTerm  int
-	Entries      []Instance
+	Entries      []*Instance
 	LeaderCommit int
 }
 
@@ -320,13 +337,37 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 }
 
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
-	var success bool = true
+	var success = true
 	if args.Term < rf.currentTerm {
 		success = false
-	} else if args.PrevLogIndex != -1 && rf.log[args.PrevLogIndex].term != args.PrevLogTerm {
+	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].term != args.PrevLogTerm) {
+		// todo: check the meaning of the following description:
+		// 'Reply false if log does not contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)'
+		// figure out whether it equals our if-condition
 		success = false
-	} else {
-		//todo
+	} else if args.Entries != nil {
+		startIdx := args.PrevLogIndex + 1
+
+		// delete conflict entries
+		for i := startIdx; i < rf.lastLogIndex; i++ {
+			rf.log[i] = nil
+		}
+
+		for idx, entry := range args.Entries {
+			rf.log[startIdx+idx] = entry
+		}
+
+		// update lastLogIndex
+		rf.lastLogIndex = startIdx + len(args.Entries) - 1
+
+		// update commitIndex
+		if args.LeaderCommit > rf.commitIndex {
+			if args.LeaderCommit > rf.lastLogIndex {
+				rf.commitIndex = rf.lastLogIndex
+			} else {
+				rf.commitIndex = args.LeaderCommit
+			}
+		}
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
@@ -356,7 +397,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 	return ok
 }
 
-func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries []Instance, leaderCommit int, collectChan chan *AppendEntriesReply) {
+func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries []*Instance, leaderCommit int, collectChan chan *AppendEntriesReply) {
 	entry := AppendEntriesArgs{
 		Term:         term,
 		LeaderId:     rf.me,
@@ -368,7 +409,7 @@ func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries 
 
 	DPrintln(rf.me, "bc AppendEntries:", entry)
 
-	for toId, _ := range rf.peers {
+	for toId := range rf.peers {
 		go func(to int) {
 			if to != rf.me {
 				var reply AppendEntriesReply
@@ -422,7 +463,7 @@ func (rf *Raft) toBeCandidate() {
 			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
 		}
 
-		var reelect bool = false
+		var reelect = false
 		for rf.role == Candidate && !reelect {
 			select {
 			case arPair := <-rf.rvProcessChan:
@@ -456,6 +497,11 @@ func (rf *Raft) toBeCandidate() {
 				rf.HandleAppendEntries(args, arPair.ReplyChan)
 
 				break
+			case cRequest := <-rf.crProcessChan:
+				cRequest.ReplyChan <- &ClientRequestReply{
+					IsLeader: false,
+				}
+				break
 			case <-time.After(timeout):
 				// third case: timeout
 				DPrintln("timeout")
@@ -471,6 +517,18 @@ func (rf *Raft) toBeLeader() {
 	// threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
 	collectChan := rf.bcHeartBeat()
+
+	// reinitialize volatile state on leaders
+
+	rf.nextIndex = make([]int, len(rf.peers))
+	rf.matchIndex = make([]int, len(rf.peers))
+
+	for i := 0; i < len(rf.peers); i++ {
+		rf.nextIndex[i] = rf.lastLogIndex + 1
+		rf.matchIndex[i] = 0
+	}
+
+	// take leader routines
 
 	for rf.role == Leader {
 		select {
@@ -494,6 +552,14 @@ func (rf *Raft) toBeLeader() {
 				rf.role = Follower
 			}
 			break
+		case cRequest := <-rf.crProcessChan:
+			cRequest.ReplyChan <- &ClientRequestReply{
+				IsLeader: true,
+				Term:     rf.currentTerm,
+				Index:    rf.lastLogIndex + 1,
+			}
+			// todo: propose a request now
+			break
 		case <-time.After(time.Duration(HBInterval) * time.Millisecond):
 			collectChan = rf.bcHeartBeat()
 			break
@@ -513,6 +579,11 @@ func (rf *Raft) toBeFollower() {
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
 			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
+			break
+		case cRequest := <-rf.crProcessChan:
+			cRequest.ReplyChan <- &ClientRequestReply{
+				IsLeader: false,
+			}
 			break
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
@@ -553,7 +624,29 @@ func (rf *Raft) run() {
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
-	isLeader := true
+	isLeader := false
+
+	rChan := make(chan *ClientRequestReply)
+
+	rf.crProcessChan <- &ClientRequestArgsReplyPair{
+		Command:   command,
+		ReplyChan: rChan,
+	}
+
+	select {
+	case reply := <-rChan:
+		if reply.IsLeader {
+			index = reply.Index
+			term = reply.Term
+			isLeader = true
+		} else {
+			isLeader = false
+		}
+		break
+	case <-time.After(time.Duration(CRTimeout) * time.Millisecond):
+		DPrintln("Request no response:", command, "@", rf.me)
+		break
+	}
 
 	return index, term, isLeader
 }
@@ -589,7 +682,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		me:            me,
 		currentTerm:   0,
 		voteFor:       VoteForNone,
-		log:           make([]Instance, InstanceSpaceSize),
+		log:           make([]*Instance, InstanceSpaceSize),
 		lastLogIndex:  -1,
 		commitIndex:   -1,
 		lastApplied:   -1,
@@ -598,6 +691,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		aeProcessChan: make(chan *AppendEntriesArgsReplyPair),
 		nextIndex:     make([]int, len(peers)),
 		matchIndex:    make([]int, len(peers)),
+		crProcessChan: make(chan *ClientRequestArgsReplyPair, ChannelSpaceSize),
+		crApplyChan:   applyCh,
 	}
 
 	// initialize from state persisted before a crash
