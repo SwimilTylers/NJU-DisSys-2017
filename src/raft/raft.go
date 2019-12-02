@@ -169,8 +169,6 @@ type RequestVoteArgsReplyPair struct {
 //
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here.
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	/*
 		rf.rvArgsChan <- &args
 		feedback := <-rf.rvArgsReplyChan
@@ -303,8 +301,6 @@ type AppendEntriesArgsReplyPair struct {
 // example AppendEntries RPC handler.
 //
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	// Your code here.
 	/*
 		rf.aeArgsChan <- &args
