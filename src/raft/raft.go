@@ -272,7 +272,7 @@ func (rf *Raft) bcLEVoting(term int, lastLogIndex int, lastLogTerm int, collectC
 		LastLogTerm:  lastLogTerm,
 	}
 
-	DPrintln(rf.me, "broadcast:", vote)
+	//DPrintln(rf.me, "broadcast:", vote)
 
 	for toId := range rf.peers {
 		go func(to int) {
@@ -328,7 +328,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		rf.aeArgsChan <- &args
 		feedback := <-rf.aeArgsReplyChan
 	*/
-
+	DPrintln("shauodhsoau", args)
 	rChan := make(chan *AppendEntriesReply)
 
 	rf.aeProcessChan <- &AppendEntriesArgsReplyPair{
@@ -344,15 +344,19 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
 	var success = true
 	if args.Term < rf.currentTerm {
+		DPrintln("Condition 1")
+		DPrintln(args, rf.currentTerm, "@", rf.me)
 		success = false
 	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].term != args.PrevLogTerm) {
 		// todo: check the meaning of the following description:
 		// 'Reply false if log does not contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)'
 		// figure out whether it equals our if-condition
+		DPrintln("Condition 2")
+		DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].term != args.PrevLogTerm)
 		success = false
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
-
+		DPrintln("replica", rf.me, "receives", args.Entries, "start from", startIdx)
 		for idx, entry := range args.Entries {
 			relIdx := startIdx + idx
 
@@ -378,6 +382,9 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 				rf.commitIndex = args.LeaderCommit
 			}
 		}
+		success = true
+	} else {
+		DPrintln("Condition 4")
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
@@ -400,12 +407,12 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 
 	// replicating
 
-	for id := range rf.peers {
+	for id := 0; id < len(rf.peers); id++ {
 		if id != rf.me {
+			DPrintln(rf.me, "replicates to", id, ":", rf.lastLogIndex, "=>", rf.log[rf.lastLogIndex])
 			rf.LogReplication(id, rf.nextIndex[id], reRChan)
 		}
 	}
-
 }
 
 func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingEntriesReply) {
@@ -418,21 +425,25 @@ func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingE
 		LeaderCommit: rf.commitIndex,
 	}
 
-	if rf.lastLogIndex != -1 {
-		args.PrevLogIndex = rf.lastLogIndex
-		args.PrevLogTerm = rf.log[rf.lastLogIndex].term
+	if rf.lastLogIndex > 0 {
+		lastIndex := rf.lastLogIndex - 1
+		args.PrevLogIndex = lastIndex
+		args.PrevLogTerm = rf.log[lastIndex].term
 	}
 
-	go func() {
+	DPrintln("Log Replicate", args)
+
+	go func(_args AppendEntriesArgs) {
 		var reply AppendEntriesReply
-		rf.sendAppendEntries(toId, args, &reply)
+		rf.sendAppendEntries(toId, _args, &reply)
+		DPrintln("figi", _args, reply)
 		rChan <- &ReplicatingEntriesReply{
 			Follower:   toId,
 			StartIndex: nextIndex,
 			Len:        len(args.Entries),
 			AEReply:    &reply,
 		}
-	}()
+	}(args)
 }
 
 //
@@ -467,7 +478,7 @@ func (rf *Raft) bcAEVoting(term int, prevLogIndex int, prevLogTerm int, entries 
 		LeaderCommit: leaderCommit,
 	}
 
-	DPrintln(rf.me, "bc AppendEntries:", entry)
+	//DPrintln(rf.me, "bc AppendEntries:", entry)
 
 	for toId := range rf.peers {
 		go func(to int) {
@@ -540,7 +551,7 @@ func (rf *Raft) updateCommitIndex() bool {
 	return updated
 }
 
-func (rf *Raft) exec() {
+func (rf *Raft) Exec() {
 	for rf.lastApplied < rf.commitIndex {
 		rf.lastApplied++
 		if rf.role == Leader {
@@ -609,14 +620,16 @@ func (rf *Raft) toBeCandidate() {
 				}
 
 				rf.HandleAppendEntries(args, arPair.ReplyChan)
-				rf.exec()
+				rf.Exec()
 
 				break
-			case cRequest := <-rf.crProcessChan:
-				cRequest.ReplyChan <- &ClientRequestReply{
-					IsLeader: false,
-				}
-				break
+			/*
+				case cRequest := <-rf.crProcessChan:
+					cRequest.ReplyChan <- &ClientRequestReply{
+						IsLeader: false,
+					}
+					break
+			*/
 			case <-time.After(timeout):
 				// third case: timeout
 				DPrintln("timeout")
@@ -681,15 +694,23 @@ func (rf *Raft) toBeLeader() {
 				rf.updateNextIndexMatchIndex(reply.Follower, upTo)
 				if rf.updateCommitIndex() {
 					// todo: execute command
-					rf.exec()
+					rf.Exec()
 				}
 			} else {
 				// if not success, check if out-of-date
 				id := reply.Follower
 
 				if rf.nextIndex[id] == reply.StartIndex {
-					// decrement nextIndex
+					/*
+						if rf.nextIndex[id] > 0 {
+							// decrement nextIndex
+							rf.nextIndex[id]--
+						}
+					*/
+
 					rf.nextIndex[id]--
+
+					DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
 					// retry
 					rf.LogReplication(id, rf.nextIndex[id], reRChan)
 				}
@@ -714,13 +735,15 @@ func (rf *Raft) toBeFollower() {
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
 			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
-			rf.exec()
+			rf.Exec()
 			break
-		case cRequest := <-rf.crProcessChan:
-			cRequest.ReplyChan <- &ClientRequestReply{
-				IsLeader: false,
-			}
-			break
+		/*
+			case cRequest := <-rf.crProcessChan:
+				cRequest.ReplyChan <- &ClientRequestReply{
+					IsLeader: false,
+				}
+				break
+		*/
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
 			break
