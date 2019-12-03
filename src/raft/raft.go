@@ -20,6 +20,7 @@ package raft
 import (
 	"math"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 )
@@ -51,9 +52,8 @@ const (
 // instance
 //
 type Instance struct {
-	term        int
-	something   interface{}
-	isCommitted bool
+	term      int
+	something interface{}
 }
 
 type ClientRequestReply struct {
@@ -312,6 +312,13 @@ type AppendEntriesArgsReplyPair struct {
 	ReplyChan chan *AppendEntriesReply
 }
 
+type ReplicatingEntriesReply struct {
+	Follower   int
+	StartIndex int
+	Len        int
+	AEReply    *AppendEntriesReply
+}
+
 //
 // example AppendEntries RPC handler.
 //
@@ -378,12 +385,11 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 	}
 }
 
-func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply) {
+func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply, reRChan chan *ReplicatingEntriesReply) {
 	rf.lastLogIndex++
 	rf.log[rf.lastLogIndex] = &Instance{
-		term:        rf.currentTerm,
-		something:   command,
-		isCommitted: false,
+		term:      rf.currentTerm,
+		something: command,
 	}
 
 	crRChan <- &ClientRequestReply{
@@ -392,7 +398,41 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 		Index:    rf.lastLogIndex,
 	}
 
-	// todo: propose ?
+	// replicating
+
+	for id := range rf.peers {
+		if id != rf.me {
+			rf.LogReplication(id, rf.nextIndex[id], reRChan)
+		}
+	}
+
+}
+
+func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingEntriesReply) {
+	args := AppendEntriesArgs{
+		Term:         rf.currentTerm,
+		LeaderId:     rf.me,
+		PrevLogIndex: -1,
+		PrevLogTerm:  -1,
+		Entries:      rf.log[nextIndex : rf.lastLogIndex+1],
+		LeaderCommit: rf.commitIndex,
+	}
+
+	if rf.lastLogIndex != -1 {
+		args.PrevLogIndex = rf.lastLogIndex
+		args.PrevLogTerm = rf.log[rf.lastLogIndex].term
+	}
+
+	go func() {
+		var reply AppendEntriesReply
+		rf.sendAppendEntries(toId, args, &reply)
+		rChan <- &ReplicatingEntriesReply{
+			Follower:   toId,
+			StartIndex: nextIndex,
+			Len:        len(args.Entries),
+			AEReply:    &reply,
+		}
+	}()
 }
 
 //
@@ -461,6 +501,60 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 	}
 }
 
+func (rf *Raft) updateNextIndexMatchIndex(id int, val int) bool {
+	var updated = false
+
+	if rf.nextIndex[id] < val {
+		updated = true
+		rf.nextIndex[id] = val
+	}
+
+	if rf.matchIndex[id] < val {
+		updated = true
+		rf.matchIndex[id] = val
+	}
+
+	return updated
+}
+
+func (rf *Raft) updateCommitIndex() bool {
+	var updated = false
+
+	rf.matchIndex[rf.me] = rf.lastLogIndex
+
+	matches := make([]int, len(rf.peers))
+
+	for idx, match := range rf.matchIndex {
+		matches[idx] = match
+	}
+
+	sort.Sort(sort.Reverse(sort.IntSlice(matches)))
+
+	majority := int(math.Ceil(float64(len(matches)+1) / 2))
+
+	if matches[majority] > rf.commitIndex {
+		rf.commitIndex = matches[majority]
+		updated = true
+	}
+
+	return updated
+}
+
+func (rf *Raft) exec() {
+	for rf.lastApplied < rf.commitIndex {
+		rf.lastApplied++
+		if rf.role == Leader {
+			rf.crApplyChan <- ApplyMsg{
+				Index:       rf.lastApplied,
+				Command:     rf.log[rf.lastApplied],
+				UseSnapshot: false,
+				Snapshot:    nil,
+			}
+
+		}
+	}
+}
+
 //
 // roles
 //
@@ -515,6 +609,7 @@ func (rf *Raft) toBeCandidate() {
 				}
 
 				rf.HandleAppendEntries(args, arPair.ReplyChan)
+				rf.exec()
 
 				break
 			case cRequest := <-rf.crProcessChan:
@@ -548,6 +643,8 @@ func (rf *Raft) toBeLeader() {
 		rf.matchIndex[i] = 0
 	}
 
+	reRChan := make(chan *ReplicatingEntriesReply, ChannelSpaceSize)
+
 	// take leader routines
 
 	for rf.role == Leader {
@@ -573,7 +670,30 @@ func (rf *Raft) toBeLeader() {
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
-			rf.AppendOneEntry(cRequest.Command, cRequest.ReplyChan)
+			rf.AppendOneEntry(cRequest.Command, cRequest.ReplyChan, reRChan)
+			break
+		case reply := <-reRChan:
+			if rf.updateCurrentTerm(reply.AEReply.Term) {
+				rf.role = Follower
+			} else if reply.AEReply.Success {
+				// if successfully replicated, update nextIdx and matchIdx
+				upTo := reply.StartIndex + reply.Len
+				rf.updateNextIndexMatchIndex(reply.Follower, upTo)
+				if rf.updateCommitIndex() {
+					// todo: execute command
+					rf.exec()
+				}
+			} else {
+				// if not success, check if out-of-date
+				id := reply.Follower
+
+				if rf.nextIndex[id] == reply.StartIndex {
+					// decrement nextIndex
+					rf.nextIndex[id]--
+					// retry
+					rf.LogReplication(id, rf.nextIndex[id], reRChan)
+				}
+			}
 			break
 		case <-time.After(time.Duration(HBInterval) * time.Millisecond):
 			collectChan = rf.bcHeartBeat()
@@ -594,6 +714,7 @@ func (rf *Raft) toBeFollower() {
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
 			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
+			rf.exec()
 			break
 		case cRequest := <-rf.crProcessChan:
 			cRequest.ReplyChan <- &ClientRequestReply{
