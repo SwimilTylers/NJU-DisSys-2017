@@ -163,6 +163,8 @@ func (cfg *config) start1(i int) {
 				if m.Index > 1 && prevok == false {
 					err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.Index)
 				}
+
+				DPrintln(i, "CFG RECEIVE APPLY", m.Index)
 			} else {
 				err_msg = fmt.Sprintf("committed command %v is not an int", m.Command)
 			}

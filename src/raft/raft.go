@@ -347,7 +347,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 }
 
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
-	// DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.lastLogIndex, rf.log[:7], "##", args)
+	DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
 	if args.Term < rf.currentTerm {
 		success = false
@@ -371,29 +371,16 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 					rf.log[i] = nil
 				}
 				rf.log[relIdx] = entry
+				rf.lastLogIndex = relIdx
 			}
 		}
 
 		// update lastLogIndex
-		rf.lastLogIndex = startIdx + len(args.Entries) - 1
+		thisLastLogIndex := startIdx + len(args.Entries) - 1
+		if thisLastLogIndex > rf.lastLogIndex {
+			rf.lastLogIndex = thisLastLogIndex
+		}
 
-		// update commitIndex
-		if args.LeaderCommit > rf.commitIndex {
-			if args.LeaderCommit > rf.lastLogIndex {
-				rf.commitIndex = rf.lastLogIndex
-			} else {
-				rf.commitIndex = args.LeaderCommit
-			}
-		}
-	} else {
-		// update commitIndex
-		if args.LeaderCommit > rf.commitIndex {
-			if args.LeaderCommit > rf.lastLogIndex {
-				rf.commitIndex = rf.lastLogIndex
-			} else {
-				rf.commitIndex = args.LeaderCommit
-			}
-		}
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
@@ -541,7 +528,7 @@ func (rf *Raft) updateNextIndexMatchIndex(id int, val int) bool {
 	return updated
 }
 
-func (rf *Raft) updateCommitIndex() bool {
+func (rf *Raft) updateLeaderCommitIndex() bool {
 	var updated = false
 
 	rf.matchIndex[rf.me] = rf.lastLogIndex
@@ -564,6 +551,17 @@ func (rf *Raft) updateCommitIndex() bool {
 	}
 
 	return updated
+}
+
+func (rf *Raft) updateCommitIndex(leaderCommit int) {
+	// update commitIndex
+	if leaderCommit > rf.commitIndex {
+		if leaderCommit > rf.lastLogIndex {
+			rf.commitIndex = rf.lastLogIndex
+		} else {
+			rf.commitIndex = leaderCommit
+		}
+	}
 }
 
 func (rf *Raft) Exec() {
@@ -626,13 +624,15 @@ func (rf *Raft) toBeCandidate() {
 
 				// second case: receive AE from new leader
 				DPrintln("receive AE:", args)
-				if args.Term == rf.currentTerm || rf.updateCurrentTerm(args.Term) {
+				if args.Term >= rf.currentTerm {
 					// at least as large as currentTerm
+					rf.updateCurrentTerm(args.Term)
 					rf.role = Follower
 					rf.voteFor = args.LeaderId
 				}
 
 				rf.HandleAppendEntries(args, arPair.ReplyChan)
+				rf.updateCommitIndex(args.LeaderCommit)
 				rf.Exec()
 
 				break
@@ -684,11 +684,16 @@ func (rf *Raft) toBeLeader() {
 		case arPair := <-rf.aeProcessChan:
 			args := arPair.Args
 
-			if rf.updateCurrentTerm(args.Term) {
+			if args.Term > rf.currentTerm {
+				rf.updateCurrentTerm(args.Term)
 				rf.role = Follower
 				rf.voteFor = args.LeaderId
 			}
+
 			rf.HandleAppendEntries(args, arPair.ReplyChan)
+			rf.updateCommitIndex(args.LeaderCommit)
+			rf.Exec()
+
 			break
 		case reply := <-collectChan:
 			if rf.updateCurrentTerm(reply.Term) {
@@ -706,7 +711,7 @@ func (rf *Raft) toBeLeader() {
 					// if successfully replicated, update nextIdx and matchIdx
 					upTo := reply.StartIndex + reply.Len - 1
 					rf.updateNextIndexMatchIndex(reply.Follower, upTo)
-					if rf.updateCommitIndex() {
+					if rf.updateLeaderCommitIndex() {
 						// todo: execute command
 						rf.Exec()
 					}
@@ -752,6 +757,7 @@ func (rf *Raft) toBeFollower() {
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
 			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
+			rf.updateCommitIndex(arPair.Args.LeaderCommit)
 			rf.Exec()
 			break
 		/*
