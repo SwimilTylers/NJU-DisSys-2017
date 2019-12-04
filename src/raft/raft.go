@@ -196,7 +196,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 		feedback := <-rf.rvArgsReplyChan
 	*/
 
-	rChan := make(chan *RequestVoteReply)
+	rChan := make(chan *RequestVoteReply, 1)
 	rf.rvProcessChan <- &RequestVoteArgsReplyPair{
 		Args:      &args,
 		ReplyChan: rChan,
@@ -334,7 +334,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		feedback := <-rf.aeArgsReplyChan
 	*/
 
-	rChan := make(chan *AppendEntriesReply)
+	rChan := make(chan *AppendEntriesReply, 1)
 
 	rf.aeProcessChan <- &AppendEntriesArgsReplyPair{
 		Args:      &args,
