@@ -31,7 +31,7 @@ import "labrpc"
 // import "encoding/gob"
 
 const InstanceSpaceSize = 5000
-const ChannelSpaceSize = 32
+const ChannelSpaceSize = 256
 
 const VoteForNone = -1
 
@@ -346,8 +346,8 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	reply.Success = feedback.Success
 }
 
-func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
-	DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
+func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) bool {
+	//DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
 	if args.Term < rf.currentTerm {
 		success = false
@@ -386,6 +386,8 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		Term:    rf.currentTerm,
 		Success: success,
 	}
+
+	return success
 }
 
 func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply, reRChan chan *ReplicatingEntriesReply) {
@@ -394,13 +396,11 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 		Term:    rf.currentTerm,
 		Command: command,
 	}
-
 	crRChan <- &ClientRequestReply{
 		IsLeader: true,
 		Term:     rf.currentTerm,
 		Index:    rf.lastLogIndex + 1, // internal log starts from 0, while cfg's starts from 1
 	}
-
 	// replicating
 
 	for id := 0; id < len(rf.peers); id++ {
@@ -553,13 +553,15 @@ func (rf *Raft) updateLeaderCommitIndex() bool {
 	return updated
 }
 
-func (rf *Raft) updateCommitIndex(leaderCommit int) {
-	// update commitIndex
-	if leaderCommit > rf.commitIndex {
-		if leaderCommit > rf.lastLogIndex {
-			rf.commitIndex = rf.lastLogIndex
-		} else {
-			rf.commitIndex = leaderCommit
+func (rf *Raft) updateCommitIndex(leaderTerm int, leaderCommit int) {
+	if leaderTerm >= rf.currentTerm {
+		// if a valid leader, update commitIndex
+		if leaderCommit > rf.commitIndex {
+			if leaderCommit > rf.lastLogIndex {
+				rf.commitIndex = rf.lastLogIndex
+			} else {
+				rf.commitIndex = leaderCommit
+			}
 		}
 	}
 }
@@ -631,9 +633,10 @@ func (rf *Raft) toBeCandidate() {
 					rf.voteFor = args.LeaderId
 				}
 
-				rf.HandleAppendEntries(args, arPair.ReplyChan)
-				rf.updateCommitIndex(args.LeaderCommit)
-				rf.Exec()
+				if rf.HandleAppendEntries(args, arPair.ReplyChan) {
+					rf.updateCommitIndex(args.Term, args.LeaderCommit)
+					rf.Exec()
+				}
 
 				break
 			/*
@@ -654,7 +657,7 @@ func (rf *Raft) toBeCandidate() {
 }
 
 func (rf *Raft) toBeLeader() {
-	DPrintln(rf.me, "Be a Leader")
+	DPrintln(rf.me, "Be a Leader @", rf.currentTerm)
 	// threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
 	collectChan := rf.bcHeartBeat()
@@ -670,6 +673,8 @@ func (rf *Raft) toBeLeader() {
 	}
 
 	reRChan := make(chan *ReplicatingEntriesReply, ChannelSpaceSize)
+
+	DPrintln(rf.me, "run leader routine @", rf.currentTerm)
 
 	// take leader routines
 
@@ -690,9 +695,10 @@ func (rf *Raft) toBeLeader() {
 				rf.voteFor = args.LeaderId
 			}
 
-			rf.HandleAppendEntries(args, arPair.ReplyChan)
-			rf.updateCommitIndex(args.LeaderCommit)
-			rf.Exec()
+			if rf.HandleAppendEntries(args, arPair.ReplyChan) {
+				rf.updateCommitIndex(args.Term, args.LeaderCommit)
+				rf.Exec()
+			}
 
 			break
 		case reply := <-collectChan:
@@ -756,9 +762,10 @@ func (rf *Raft) toBeFollower() {
 			break
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
-			rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan)
-			rf.updateCommitIndex(arPair.Args.LeaderCommit)
-			rf.Exec()
+			if rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan) {
+				rf.updateCommitIndex(arPair.Args.Term, arPair.Args.LeaderCommit)
+				rf.Exec()
+			}
 			break
 		/*
 			case cRequest := <-rf.crProcessChan:
@@ -810,7 +817,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	DPrintln(rf.me, "receive request", command)
 
-	rChan := make(chan *ClientRequestReply)
+	rChan := make(chan *ClientRequestReply, 1)
 
 	rf.crProcessChan <- &ClientRequestArgsReplyPair{
 		Command:   command,
