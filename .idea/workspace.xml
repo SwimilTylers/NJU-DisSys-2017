@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="initially pass the Rejoin test">
-      <change beforePath="$PROJECT_DIR$/src/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/raft.go" afterDir="false" />
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="pass 5 times of the Rejoin-before test, make unbuffered chan buffered">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -67,7 +67,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Go Test.Test_Rejoin">
+  <component name="RunManager" selected="Go Test.Test_Backup">
     <configuration default="true" type="Applet" factoryName="Applet">
       <option name="HTML_USED" value="false" />
       <option name="WIDTH" value="400" />
@@ -243,7 +243,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="add test configs" />
     <MESSAGE value="initElection passes" />
     <MESSAGE value="reElection: I not pass" />
     <MESSAGE value="initially pass Leader tests" />
@@ -268,6 +267,7 @@
     <MESSAGE value="initially pass the FailNoAgree test" />
     <MESSAGE value="initially pass the ConcurrentStarts test" />
     <MESSAGE value="initially pass the Rejoin test" />
-    <option name="LAST_COMMIT_MESSAGE" value="initially pass the Rejoin test" />
+    <MESSAGE value="pass 5 times of the Rejoin-before test, make unbuffered chan buffered" />
+    <option name="LAST_COMMIT_MESSAGE" value="pass 5 times of the Rejoin-before test, make unbuffered chan buffered" />
   </component>
 </project>
