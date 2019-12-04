@@ -347,6 +347,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 }
 
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
+	// DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
 	if args.Term < rf.currentTerm {
 		success = false
@@ -354,7 +355,7 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		// todo: check the meaning of the following description:
 		// 'Reply false if log does not contain an entry at prevLogIndex whose Term matches prevLogTerm (§5.3)'
 		// figure out whether it equals our if-condition
-		DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
+		// DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
 		success = false
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
@@ -424,6 +425,11 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 }
 
 func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingEntriesReply) {
+	if rf.lastLogIndex < nextIndex {
+		DPrintln(rf.me, "lagging", rf.lastLogIndex, "vs.", nextIndex)
+		return
+	}
+
 	args := AppendEntriesArgs{
 		Term:         rf.currentTerm,
 		LeaderId:     rf.me,
@@ -546,9 +552,9 @@ func (rf *Raft) updateCommitIndex() bool {
 		matches[idx] = match
 	}
 
-	sort.Sort(sort.Reverse(sort.IntSlice(matches)))
+	DPrintln(rf.me, "finds matches is", matches)
 
-	DPrintln("Sort as", matches)
+	sort.Sort(sort.Reverse(sort.IntSlice(matches)))
 
 	threshold := int(math.Ceil(float64(len(matches)+1)/2)) - 1
 
@@ -695,31 +701,35 @@ func (rf *Raft) toBeLeader() {
 		case reply := <-reRChan:
 			if rf.updateCurrentTerm(reply.AEReply.Term) {
 				rf.role = Follower
-			} else if reply.AEReply.Success {
-				// if successfully replicated, update nextIdx and matchIdx
-				upTo := reply.StartIndex + reply.Len - 1
-				rf.updateNextIndexMatchIndex(reply.Follower, upTo)
-				if rf.updateCommitIndex() {
-					// todo: execute command
-					rf.Exec()
-				}
-			} else {
-				// if not success, check if out-of-date
-				id := reply.Follower
+			} else if reply.AEReply.Term == rf.currentTerm {
+				if reply.AEReply.Success {
+					// if successfully replicated, update nextIdx and matchIdx
+					upTo := reply.StartIndex + reply.Len - 1
+					rf.updateNextIndexMatchIndex(reply.Follower, upTo)
+					if rf.updateCommitIndex() {
+						// todo: execute command
+						rf.Exec()
+					}
+				} else {
+					// if not success, check if out-of-date
+					id := reply.Follower
 
-				if rf.nextIndex[id] == reply.StartIndex {
-					/*
-						if rf.nextIndex[id] > 0 {
-							// decrement nextIndex
-							rf.nextIndex[id]--
-						}
-					*/
+					if rf.nextIndex[id] == reply.StartIndex {
+						/*
+							if rf.nextIndex[id] > 0 {
+								// decrement nextIndex
+								rf.nextIndex[id]--
+							}
+						*/
 
-					rf.nextIndex[id]--
+						DPrintln(reply, "$=>", reply.AEReply)
 
-					DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
-					// retry
-					rf.LogReplication(id, rf.nextIndex[id], reRChan)
+						rf.nextIndex[id]--
+
+						DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
+						// retry
+						rf.LogReplication(id, rf.nextIndex[id], reRChan)
+					}
 				}
 			}
 			break

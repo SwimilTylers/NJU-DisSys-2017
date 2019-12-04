@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="find bugs in APMessage">
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="initially pass the Basic test">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/raft/config.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/config.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/raft.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/raft/test_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/test_test.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -34,6 +34,11 @@
     </option>
   </component>
   <component name="ProjectId" id="1TF2WwhKOxhZR3sTmVeeR0zl979" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
   <component name="PropertiesComponent">
     <property name="GO_FMT" value="true" />
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
@@ -64,7 +69,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Go Test.Test_TestBasicAgree">
+  <component name="RunManager" selected="Go Test.Test_TestFailAgree">
     <configuration default="true" type="Applet" factoryName="Applet">
       <option name="HTML_USED" value="false" />
       <option name="WIDTH" value="400" />
@@ -172,6 +177,18 @@
       <pattern value="^TestBasicAgree$" />
       <method v="2" />
     </configuration>
+    <configuration name="Test_TestFailAgree" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true">
+      <output_file path="$PROJECT_DIR$/test_2_2.txt" is_save="true" />
+      <module name="NJU-DisSys-2017" />
+      <working_directory value="$PROJECT_DIR$/src/raft" />
+      <framework value="gotest" />
+      <kind value="PACKAGE" />
+      <package value="raft" />
+      <directory value="$PROJECT_DIR$/" />
+      <filePath value="$PROJECT_DIR$/" />
+      <pattern value="^TestFailAgree$" />
+      <method v="2" />
+    </configuration>
     <list>
       <item itemvalue="Compound.Test_Assignment_1" />
       <item itemvalue="Compound.Test_Assignment_2" />
@@ -182,9 +199,11 @@
       <item itemvalue="Go Test.Test_Backup" />
       <item itemvalue="Go Test.Test_Election" />
       <item itemvalue="Go Test.Test_TestBasicAgree" />
+      <item itemvalue="Go Test.Test_TestFailAgree" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.Test_TestFailAgree" />
         <item itemvalue="Go Test.Test_TestBasicAgree" />
       </list>
     </recent_temporary>
@@ -246,6 +265,7 @@
     <MESSAGE value="fix grant condition" />
     <MESSAGE value="update cr receiver" />
     <MESSAGE value="pass regression test of test_1" />
-    <option name="LAST_COMMIT_MESSAGE" value="pass regression test of test_1" />
+    <MESSAGE value="initially pass the Basic test" />
+    <option name="LAST_COMMIT_MESSAGE" value="initially pass the Basic test" />
   </component>
 </project>
