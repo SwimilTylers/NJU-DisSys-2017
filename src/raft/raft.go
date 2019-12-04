@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -52,8 +53,12 @@ const (
 // instance
 //
 type Instance struct {
-	term      int
-	something interface{}
+	Term    int
+	Command interface{}
+}
+
+func (i Instance) String() string {
+	return fmt.Sprintf("%d@%d", i.Command, i.Term)
 }
 
 type ClientRequestReply struct {
@@ -201,7 +206,7 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = feedback.Term
 	reply.VoteGranted = feedback.VoteGranted
 
-	DPrintln(rf.me, "LEReply", args.CandidateId, ":", reply)
+	// DPrintln(rf.me, "LEReply", args.CandidateId, ":", reply)
 }
 
 func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
@@ -213,9 +218,9 @@ func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
 		if rf.lastLogIndex == -1 {
 			isGranted = args.LastLogIndex >= -1
 		} else {
-			isGranted = args.LastLogTerm > rf.log[rf.lastLogIndex].term ||
-				(args.LastLogTerm == rf.log[rf.lastLogIndex].term && args.LastLogIndex >= rf.lastLogIndex)
-			// isGranted = args.LastLogIndex >= rf.lastLogIndex && args.LastLogTerm >= rf.log[rf.lastLogIndex].term
+			isGranted = args.LastLogTerm > rf.log[rf.lastLogIndex].Term ||
+				(args.LastLogTerm == rf.log[rf.lastLogIndex].Term && args.LastLogIndex >= rf.lastLogIndex)
+			// isGranted = args.LastLogIndex >= rf.lastLogIndex && args.LastLogTerm >= rf.log[rf.lastLogIndex].Term
 		}
 	} else {
 		isGranted = false
@@ -328,7 +333,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 		rf.aeArgsChan <- &args
 		feedback := <-rf.aeArgsReplyChan
 	*/
-	DPrintln("shauodhsoau", args)
+
 	rChan := make(chan *AppendEntriesReply)
 
 	rf.aeProcessChan <- &AppendEntriesArgsReplyPair{
@@ -344,15 +349,12 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) {
 	var success = true
 	if args.Term < rf.currentTerm {
-		DPrintln("Condition 1")
-		DPrintln(args, rf.currentTerm, "@", rf.me)
 		success = false
-	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].term != args.PrevLogTerm) {
+	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm) {
 		// todo: check the meaning of the following description:
-		// 'Reply false if log does not contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)'
+		// 'Reply false if log does not contain an entry at prevLogIndex whose Term matches prevLogTerm (§5.3)'
 		// figure out whether it equals our if-condition
-		DPrintln("Condition 2")
-		DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].term != args.PrevLogTerm)
+		DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
 		success = false
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
@@ -362,7 +364,7 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 
 			if rf.log[relIdx] == nil {
 				rf.log[relIdx] = entry
-			} else if rf.log[relIdx].term != entry.term {
+			} else if rf.log[relIdx].Term != entry.Term {
 				// delete conflict entries
 				for i := relIdx; i < rf.lastLogIndex; i++ {
 					rf.log[i] = nil
@@ -382,9 +384,15 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 				rf.commitIndex = args.LeaderCommit
 			}
 		}
-		success = true
 	} else {
-		DPrintln("Condition 4")
+		// update commitIndex
+		if args.LeaderCommit > rf.commitIndex {
+			if args.LeaderCommit > rf.lastLogIndex {
+				rf.commitIndex = rf.lastLogIndex
+			} else {
+				rf.commitIndex = args.LeaderCommit
+			}
+		}
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
@@ -395,14 +403,14 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply, reRChan chan *ReplicatingEntriesReply) {
 	rf.lastLogIndex++
 	rf.log[rf.lastLogIndex] = &Instance{
-		term:      rf.currentTerm,
-		something: command,
+		Term:    rf.currentTerm,
+		Command: command,
 	}
 
 	crRChan <- &ClientRequestReply{
 		IsLeader: true,
 		Term:     rf.currentTerm,
-		Index:    rf.lastLogIndex,
+		Index:    rf.lastLogIndex + 1, // internal log starts from 0, while cfg's starts from 1
 	}
 
 	// replicating
@@ -425,10 +433,10 @@ func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingE
 		LeaderCommit: rf.commitIndex,
 	}
 
-	if rf.lastLogIndex > 0 {
-		lastIndex := rf.lastLogIndex - 1
-		args.PrevLogIndex = lastIndex
-		args.PrevLogTerm = rf.log[lastIndex].term
+	if nextIndex > 0 {
+		prevIndex := nextIndex - 1
+		args.PrevLogIndex = prevIndex
+		args.PrevLogTerm = rf.log[prevIndex].Term
 	}
 
 	DPrintln("Log Replicate", args)
@@ -436,7 +444,6 @@ func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingE
 	go func(_args AppendEntriesArgs) {
 		var reply AppendEntriesReply
 		rf.sendAppendEntries(toId, _args, &reply)
-		DPrintln("figi", _args, reply)
 		rChan <- &ReplicatingEntriesReply{
 			Follower:   toId,
 			StartIndex: nextIndex,
@@ -496,7 +503,7 @@ func (rf *Raft) bcHeartBeat() chan *AppendEntriesReply {
 	if rf.lastLogIndex == -1 {
 		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, -1, nil, rf.commitIndex, collectChan)
 	} else {
-		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, nil, rf.commitIndex, collectChan)
+		rf.bcAEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].Term, nil, rf.commitIndex, collectChan)
 	}
 	return collectChan
 }
@@ -505,7 +512,7 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 	if term > rf.currentTerm {
 		rf.currentTerm = term
 		rf.voteFor = VoteForNone
-		DPrintln(rf.me, "term =", term)
+		DPrintln(rf.me, "Term =", term)
 		return true
 	} else {
 		return false
@@ -541,10 +548,12 @@ func (rf *Raft) updateCommitIndex() bool {
 
 	sort.Sort(sort.Reverse(sort.IntSlice(matches)))
 
-	majority := int(math.Ceil(float64(len(matches)+1) / 2))
+	DPrintln("Sort as", matches)
 
-	if matches[majority] > rf.commitIndex {
-		rf.commitIndex = matches[majority]
+	threshold := int(math.Ceil(float64(len(matches)+1)/2)) - 1
+
+	if matches[threshold] > rf.commitIndex {
+		rf.commitIndex = matches[threshold]
 		updated = true
 	}
 
@@ -554,14 +563,12 @@ func (rf *Raft) updateCommitIndex() bool {
 func (rf *Raft) Exec() {
 	for rf.lastApplied < rf.commitIndex {
 		rf.lastApplied++
-		if rf.role == Leader {
-			rf.crApplyChan <- ApplyMsg{
-				Index:       rf.lastApplied,
-				Command:     rf.log[rf.lastApplied],
-				UseSnapshot: false,
-				Snapshot:    nil,
-			}
-
+		DPrintln(rf.me, "execute", rf.lastApplied, "/", rf.commitIndex, rf.log[rf.lastApplied])
+		rf.crApplyChan <- ApplyMsg{
+			Index:       rf.lastApplied + 1, // modification, internal log array starts at 0, but cfg's starts at 1
+			Command:     rf.log[rf.lastApplied].Command,
+			UseSnapshot: false,
+			Snapshot:    nil,
 		}
 	}
 }
@@ -585,7 +592,7 @@ func (rf *Raft) toBeCandidate() {
 		if rf.lastLogIndex == -1 {
 			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, -1, collectChan)
 		} else {
-			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].term, collectChan)
+			rf.bcLEVoting(rf.currentTerm, rf.lastLogIndex, rf.log[rf.lastLogIndex].Term, collectChan)
 		}
 
 		var reelect = false
@@ -690,7 +697,7 @@ func (rf *Raft) toBeLeader() {
 				rf.role = Follower
 			} else if reply.AEReply.Success {
 				// if successfully replicated, update nextIdx and matchIdx
-				upTo := reply.StartIndex + reply.Len
+				upTo := reply.StartIndex + reply.Len - 1
 				rf.updateNextIndexMatchIndex(reply.Follower, upTo)
 				if rf.updateCommitIndex() {
 					// todo: execute command
@@ -784,6 +791,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := false
+
+	DPrintln(rf.me, "receive request", command)
 
 	rChan := make(chan *ClientRequestReply)
 
