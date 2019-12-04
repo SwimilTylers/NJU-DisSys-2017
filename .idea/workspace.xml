@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="pass 5 times of the Rejoin-before test, make unbuffered chan buffered">
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine">
+      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/Test_Backup.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/Test_Backup.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -67,7 +68,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Go Test.Test_Backup">
+  <component name="RunManager" selected="Go Test.Test_TestCount">
     <configuration default="true" type="Applet" factoryName="Applet">
       <option name="HTML_USED" value="false" />
       <option name="WIDTH" value="400" />
@@ -175,6 +176,17 @@
       <pattern value="^TestBasicAgree$" />
       <method v="2" />
     </configuration>
+    <configuration name="Test_TestCount" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true">
+      <module name="NJU-DisSys-2017" />
+      <working_directory value="$PROJECT_DIR$/src/raft" />
+      <framework value="gotest" />
+      <kind value="PACKAGE" />
+      <package value="raft" />
+      <directory value="$PROJECT_DIR$/" />
+      <filePath value="$PROJECT_DIR$/" />
+      <pattern value="^TestCount$" />
+      <method v="2" />
+    </configuration>
     <configuration name="Test_TestFailAgree" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true">
       <output_file path="$PROJECT_DIR$/test_2_2.txt" is_save="true" />
       <module name="NJU-DisSys-2017" />
@@ -198,9 +210,11 @@
       <item itemvalue="Go Test.Test_Election" />
       <item itemvalue="Go Test.Test_TestBasicAgree" />
       <item itemvalue="Go Test.Test_TestFailAgree" />
+      <item itemvalue="Go Test.Test_TestCount" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.Test_TestCount" />
         <item itemvalue="Go Test.Test_TestFailAgree" />
         <item itemvalue="Go Test.Test_TestBasicAgree" />
       </list>
@@ -243,7 +257,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="initElection passes" />
     <MESSAGE value="reElection: I not pass" />
     <MESSAGE value="initially pass Leader tests" />
     <MESSAGE value="pass Leader tests - after 10 epochs" />
@@ -268,6 +281,7 @@
     <MESSAGE value="initially pass the ConcurrentStarts test" />
     <MESSAGE value="initially pass the Rejoin test" />
     <MESSAGE value="pass 5 times of the Rejoin-before test, make unbuffered chan buffered" />
-    <option name="LAST_COMMIT_MESSAGE" value="pass 5 times of the Rejoin-before test, make unbuffered chan buffered" />
+    <MESSAGE value="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine" />
+    <option name="LAST_COMMIT_MESSAGE" value="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine" />
   </component>
 </project>
