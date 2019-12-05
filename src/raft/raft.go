@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"math"
 	"math/rand"
@@ -141,12 +143,14 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here.
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := gob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := gob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.voteFor)
+	e.Encode(rf.lastLogIndex)
+	e.Encode(rf.log[:rf.lastLogIndex+1])
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -155,10 +159,17 @@ func (rf *Raft) persist() {
 func (rf *Raft) readPersist(data []byte) {
 	// Your code here.
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := gob.NewDecoder(r)
-	// d.Decode(&rf.xxx)
-	// d.Decode(&rf.yyy)
+	if data != nil && len(data) > 0 {
+		r := bytes.NewBuffer(data)
+		d := gob.NewDecoder(r)
+		d.Decode(&rf.currentTerm)
+		d.Decode(&rf.voteFor)
+		d.Decode(&rf.lastLogIndex)
+
+		bufLog := make([]*Instance, rf.lastLogIndex+1)
+		d.Decode(&bufLog)
+		copy(rf.log[:rf.lastLogIndex+1], bufLog)
+	}
 }
 
 //

@@ -344,6 +344,8 @@ func TestBackup(t *testing.T) {
 	cfg.disconnect((leader1 + 3) % servers)
 	cfg.disconnect((leader1 + 4) % servers)
 
+	DPrintln("Scenario I, conn=", []int{leader1, (leader1 + 1) % servers})
+
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
@@ -353,6 +355,8 @@ func TestBackup(t *testing.T) {
 
 	cfg.disconnect((leader1 + 0) % servers)
 	cfg.disconnect((leader1 + 1) % servers)
+
+	DPrintln("Scenario II, conn=", []int{(leader1 + 2) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers})
 
 	// allow other partition to recover
 	cfg.connect((leader1 + 2) % servers)
@@ -371,7 +375,7 @@ func TestBackup(t *testing.T) {
 		other = (leader2 + 1) % servers
 	}
 	cfg.disconnect(other)
-
+	DPrintln("Scenario III, conn=", []int{(leader1 + 2) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers}, "\\", []int{other})
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
@@ -386,7 +390,7 @@ func TestBackup(t *testing.T) {
 	cfg.connect((leader1 + 0) % servers)
 	cfg.connect((leader1 + 1) % servers)
 	cfg.connect(other)
-
+	DPrintln("Scenario IV")
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3)

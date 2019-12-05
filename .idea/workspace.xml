@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine">
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/Test_Backup.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/Test_Backup.xml" afterDir="false" />
+    <list default="true" id="558ac743-39b1-4d9c-ab46-81873a9bc231" name="Default" comment="pass 5 times of the TestCount test">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/raft/raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/raft.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/raft/test_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/src/raft/test_test.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -68,7 +69,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Go Test.Test_TestCount">
+  <component name="RunManager" selected="Go Test.Test_Backup">
     <configuration default="true" type="Applet" factoryName="Applet">
       <option name="HTML_USED" value="false" />
       <option name="WIDTH" value="400" />
@@ -257,7 +258,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="reElection: I not pass" />
     <MESSAGE value="initially pass Leader tests" />
     <MESSAGE value="pass Leader tests - after 10 epochs" />
     <MESSAGE value="pass Leader tests - after 20 epochs" />
@@ -282,6 +282,7 @@
     <MESSAGE value="initially pass the Rejoin test" />
     <MESSAGE value="pass 5 times of the Rejoin-before test, make unbuffered chan buffered" />
     <MESSAGE value="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine" />
-    <option name="LAST_COMMIT_MESSAGE" value="pass 5 times of the Backup test,&#10;however, it runs too slow, might exists somewhere to refine" />
+    <MESSAGE value="pass 5 times of the TestCount test" />
+    <option name="LAST_COMMIT_MESSAGE" value="pass 5 times of the TestCount test" />
   </component>
 </project>
