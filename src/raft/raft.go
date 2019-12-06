@@ -41,6 +41,7 @@ const LETimeoutLBound = 150
 const LETimeoutUBound = 300
 
 const CRTimeout = 500
+const AERTimeout = 300
 
 const HBInterval = 50
 const HBTimeout = HBInterval * 3
@@ -166,9 +167,15 @@ func (rf *Raft) readPersist(data []byte) {
 		d.Decode(&rf.voteFor)
 		d.Decode(&rf.lastLogIndex)
 
+		if rf.voteFor == rf.me {
+			rf.voteFor = VoteForNone
+		}
+
 		bufLog := make([]*Instance, rf.lastLogIndex+1)
 		d.Decode(&bufLog)
 		copy(rf.log[:rf.lastLogIndex+1], bufLog)
+
+		DPrintln(rf.me, "Read @", rf.currentTerm, "=>", rf.voteFor, bufLog[:])
 	}
 }
 
@@ -244,6 +251,8 @@ func (rf *Raft) HandleRequestVote(args *RequestVoteArgs, rChan chan *RequestVote
 	if rf.decideIfGranted(args) {
 		rf.role = Follower
 		rf.voteFor = args.CandidateId
+		// persist voteFor
+		rf.persist()
 		DPrintln(rf.me, "vote for", rf.voteFor)
 
 		rChan <- &RequestVoteReply{
@@ -321,6 +330,12 @@ type AppendEntriesReply struct {
 	// Your data here.
 	Term    int
 	Success bool
+	Reset   *AppendEntriesReset
+}
+
+type AppendEntriesReset struct {
+	NodeId  int
+	ResetTo int
 }
 
 type AppendEntriesArgsReplyPair struct {
@@ -332,6 +347,7 @@ type ReplicatingEntriesReply struct {
 	Follower   int
 	StartIndex int
 	Len        int
+	Retry      bool
 	AEReply    *AppendEntriesReply
 }
 
@@ -360,6 +376,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) bool {
 	//DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
+	var reset *AppendEntriesReset = nil
 	if args.Term < rf.currentTerm {
 		success = false
 	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm) {
@@ -368,6 +385,10 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		// figure out whether it equals our if-condition
 		// DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
 		success = false
+		reset = &AppendEntriesReset{
+			NodeId:  rf.me,
+			ResetTo: rf.findResetTo(args.PrevLogTerm),
+		}
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
 		DPrintln("replica", rf.me, "receives", args.Entries, "start from", startIdx)
@@ -390,12 +411,14 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		thisLastLogIndex := startIdx + len(args.Entries) - 1
 		if thisLastLogIndex > rf.lastLogIndex {
 			rf.lastLogIndex = thisLastLogIndex
+			// persist lastLogIndex and log
+			rf.persist()
 		}
-
 	}
 	rChan <- &AppendEntriesReply{
 		Term:    rf.currentTerm,
 		Success: success,
+		Reset:   reset,
 	}
 
 	return success
@@ -407,6 +430,10 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 		Term:    rf.currentTerm,
 		Command: command,
 	}
+
+	// persist lastLogIndex and log
+	rf.persist()
+
 	crRChan <- &ClientRequestReply{
 		IsLeader: true,
 		Term:     rf.currentTerm,
@@ -443,18 +470,41 @@ func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingE
 		args.PrevLogTerm = rf.log[prevIndex].Term
 	}
 
-	DPrintln("Log Replicate", args)
+	//DPrintln("Log Replicate", args)
 
-	go func(_args AppendEntriesArgs) {
-		var reply AppendEntriesReply
-		rf.sendAppendEntries(toId, _args, &reply)
-		rChan <- &ReplicatingEntriesReply{
-			Follower:   toId,
-			StartIndex: nextIndex,
-			Len:        len(args.Entries),
-			AEReply:    &reply,
+	go func() {
+		internalRChan := make(chan *AppendEntriesReply, 1)
+		go func() {
+			var reply AppendEntriesReply
+			rf.sendAppendEntries(toId, args, &reply)
+			internalRChan <- &reply
+		}()
+
+		select {
+		case aer := <-internalRChan:
+			rChan <- &ReplicatingEntriesReply{
+				Follower:   toId,
+				StartIndex: nextIndex,
+				Len:        len(args.Entries),
+				Retry:      false,
+				AEReply:    aer,
+			}
+			break
+		case <-time.After(time.Duration(AERTimeout) * time.Millisecond):
+			rChan <- &ReplicatingEntriesReply{
+				Follower:   toId,
+				StartIndex: nextIndex,
+				Len:        len(args.Entries),
+				Retry:      true,
+				AEReply: &AppendEntriesReply{
+					Term:    args.Term,
+					Success: false,
+					Reset:   nil,
+				},
+			}
+			break
 		}
-	}(args)
+	}()
 }
 
 //
@@ -516,6 +566,10 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 	if term > rf.currentTerm {
 		rf.currentTerm = term
 		rf.voteFor = VoteForNone
+
+		// persist currentTerm and voteFor
+		rf.persist()
+
 		DPrintln(rf.me, "Term =", term)
 		return true
 	} else {
@@ -577,6 +631,25 @@ func (rf *Raft) updateCommitIndex(leaderTerm int, leaderCommit int) {
 	}
 }
 
+func (rf *Raft) findResetTo(prevTerm int) int {
+	if rf.lastLogIndex == -1 {
+		// no log has ever recorded
+		return 0
+	}
+
+	for i := rf.lastLogIndex; i > 0; i-- {
+		if rf.log[i].Term > prevTerm {
+			continue
+		}
+
+		if rf.log[i].Term != rf.log[i-1].Term {
+			return i
+		}
+	}
+
+	return 0
+}
+
 func (rf *Raft) Exec() {
 	for rf.lastApplied < rf.commitIndex {
 		rf.lastApplied++
@@ -599,6 +672,10 @@ func (rf *Raft) toBeCandidate() {
 		// start leader election
 		rf.currentTerm++
 		rf.voteFor = rf.me
+
+		// persist currentTerm and voteFor
+		rf.persist()
+
 		timeout := time.Duration(LETimeoutLBound+rand.Intn(LETimeoutUBound-LETimeoutLBound)) * time.Millisecond
 
 		count := 0
@@ -642,6 +719,8 @@ func (rf *Raft) toBeCandidate() {
 					rf.updateCurrentTerm(args.Term)
 					rf.role = Follower
 					rf.voteFor = args.LeaderId
+					// persist voteFor
+					rf.persist()
 				}
 
 				if rf.HandleAppendEntries(args, arPair.ReplyChan) {
@@ -659,7 +738,7 @@ func (rf *Raft) toBeCandidate() {
 			*/
 			case <-time.After(timeout):
 				// third case: timeout
-				DPrintln("timeout")
+				DPrintln(rf.me, "timeout @", rf.currentTerm)
 				reelect = true
 				break
 			}
@@ -704,6 +783,8 @@ func (rf *Raft) toBeLeader() {
 				rf.updateCurrentTerm(args.Term)
 				rf.role = Follower
 				rf.voteFor = args.LeaderId
+				// persist voteFor
+				rf.persist()
 			}
 
 			if rf.HandleAppendEntries(args, arPair.ReplyChan) {
@@ -715,6 +796,13 @@ func (rf *Raft) toBeLeader() {
 		case reply := <-collectChan:
 			if rf.updateCurrentTerm(reply.Term) {
 				rf.role = Follower
+			} else if reply.Reset != nil {
+				reset := reply.Reset
+				rf.nextIndex[reset.NodeId] = reset.ResetTo
+				rf.matchIndex[reset.NodeId] = 0
+
+				DPrintln(rf.me, "detect reset from", reset.NodeId, "resetTo", reset.ResetTo)
+				rf.LogReplication(reset.NodeId, rf.nextIndex[reset.NodeId], reRChan)
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
@@ -745,10 +833,18 @@ func (rf *Raft) toBeLeader() {
 						*/
 
 						DPrintln(reply, "$=>", reply.AEReply)
+						if !reply.Retry {
+							if reply.AEReply.Reset == nil {
+								rf.nextIndex[id]--
+							} else {
+								rf.nextIndex[id] = reply.AEReply.Reset.ResetTo
+								rf.matchIndex[id] = 0
+							}
 
-						rf.nextIndex[id]--
-
-						DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
+							DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
+						} else {
+							DPrintln("Replication restart: from", id, "startIndex is", reply.StartIndex)
+						}
 						// retry
 						rf.LogReplication(id, rf.nextIndex[id], reRChan)
 					}
@@ -889,8 +985,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		commitIndex:   -1,
 		lastApplied:   -1,
 		role:          Follower,
-		rvProcessChan: make(chan *RequestVoteArgsReplyPair),
-		aeProcessChan: make(chan *AppendEntriesArgsReplyPair),
+		rvProcessChan: make(chan *RequestVoteArgsReplyPair, ChannelSpaceSize),
+		aeProcessChan: make(chan *AppendEntriesArgsReplyPair, ChannelSpaceSize),
 		nextIndex:     make([]int, len(peers)),
 		matchIndex:    make([]int, len(peers)),
 		crProcessChan: make(chan *ClientRequestArgsReplyPair, ChannelSpaceSize),
@@ -899,7 +995,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
 	go rf.run()
 
 	return rf
