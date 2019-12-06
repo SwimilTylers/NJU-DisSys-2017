@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Test_FailNoAgree" type="GoTestRunConfiguration" factoryName="Go Test">
+  <configuration default="false" name="Test_X" type="GoTestRunConfiguration" factoryName="Go Test">
     <module name="NJU-DisSys-2017" />
     <working_directory value="$PROJECT_DIR$/src/raft" />
     <framework value="gotest" />
@@ -7,7 +7,7 @@
     <package value="raft" />
     <directory value="$PROJECT_DIR$/" />
     <filePath value="$PROJECT_DIR$/" />
-    <pattern value="FailNoAgree" />
+    <pattern value="Test" />
     <method v="2" />
   </configuration>
 </component>

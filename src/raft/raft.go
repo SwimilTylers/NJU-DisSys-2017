@@ -40,7 +40,7 @@ const VoteForNone = -1
 const LETimeoutLBound = 150
 const LETimeoutUBound = 300
 
-const CRTimeout = 500
+const CRTimeout = 100
 const AERTimeout = 300
 
 const HBInterval = 50
@@ -328,14 +328,9 @@ type AppendEntriesArgs struct {
 //
 type AppendEntriesReply struct {
 	// Your data here.
-	Term    int
-	Success bool
-	Reset   *AppendEntriesReset
-}
-
-type AppendEntriesReset struct {
-	NodeId  int
-	ResetTo int
+	Term              int
+	Success           bool
+	PossibleNextIndex int
 }
 
 type AppendEntriesArgsReplyPair struct {
@@ -376,7 +371,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) bool {
 	//DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
-	var reset *AppendEntriesReset = nil
+	var reset = -1
 	if args.Term < rf.currentTerm {
 		success = false
 	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm) {
@@ -385,10 +380,7 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		// figure out whether it equals our if-condition
 		// DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
 		success = false
-		reset = &AppendEntriesReset{
-			NodeId:  rf.me,
-			ResetTo: rf.findResetTo(args.PrevLogTerm),
-		}
+		reset = rf.findResetTo(args.PrevLogTerm)
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
 		DPrintln("replica", rf.me, "receives", args.Entries, "start from", startIdx)
@@ -416,9 +408,9 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		}
 	}
 	rChan <- &AppendEntriesReply{
-		Term:    rf.currentTerm,
-		Success: success,
-		Reset:   reset,
+		Term:              rf.currentTerm,
+		Success:           success,
+		PossibleNextIndex: reset,
 	}
 
 	return success
@@ -497,9 +489,9 @@ func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingE
 				Len:        len(args.Entries),
 				Retry:      true,
 				AEReply: &AppendEntriesReply{
-					Term:    args.Term,
-					Success: false,
-					Reset:   nil,
+					Term:              args.Term,
+					Success:           false,
+					PossibleNextIndex: -1,
 				},
 			}
 			break
@@ -796,13 +788,6 @@ func (rf *Raft) toBeLeader() {
 		case reply := <-collectChan:
 			if rf.updateCurrentTerm(reply.Term) {
 				rf.role = Follower
-			} else if reply.Reset != nil {
-				reset := reply.Reset
-				rf.nextIndex[reset.NodeId] = reset.ResetTo
-				rf.matchIndex[reset.NodeId] = 0
-
-				DPrintln(rf.me, "detect reset from", reset.NodeId, "resetTo", reset.ResetTo)
-				rf.LogReplication(reset.NodeId, rf.nextIndex[reset.NodeId], reRChan)
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
@@ -834,14 +819,10 @@ func (rf *Raft) toBeLeader() {
 
 						DPrintln(reply, "$=>", reply.AEReply)
 						if !reply.Retry {
-							if reply.AEReply.Reset == nil {
-								rf.nextIndex[id]--
-							} else {
-								rf.nextIndex[id] = reply.AEReply.Reset.ResetTo
-								rf.matchIndex[id] = 0
-							}
+							rf.nextIndex[id] = reply.AEReply.PossibleNextIndex
+							rf.matchIndex[id] = 0
 
-							DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex)
+							DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex, "reset to", rf.nextIndex[id])
 						} else {
 							DPrintln("Replication restart: from", id, "startIndex is", reply.StartIndex)
 						}
