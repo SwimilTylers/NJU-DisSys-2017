@@ -40,7 +40,8 @@ const VoteForNone = -1
 const LETimeoutLBound = 150
 const LETimeoutUBound = 300
 
-const CRTimeout = 100
+const CRDelay = 100
+const CRTimeout = 800
 const AERTimeout = 300
 
 const HBInterval = 50
@@ -720,13 +721,14 @@ func (rf *Raft) toBeCandidate() {
 				}
 
 				break
-			/*
-				case cRequest := <-rf.crProcessChan:
-					cRequest.ReplyChan <- &ClientRequestReply{
+			case cRequest := <-rf.crProcessChan:
+				go func(rChan chan *ClientRequestReply) {
+					time.Sleep(time.Duration(CRDelay) * time.Millisecond)
+					rChan <- &ClientRequestReply{
 						IsLeader: false,
 					}
-					break
-			*/
+				}(cRequest.ReplyChan)
+				break
 			case <-time.After(timeout):
 				// third case: timeout
 				//DPrintln(rf.me, "timeout @", rf.currentTerm)
@@ -853,13 +855,13 @@ func (rf *Raft) toBeFollower() {
 				rf.Exec()
 			}
 			break
-		/*
-			case cRequest := <-rf.crProcessChan:
-				cRequest.ReplyChan <- &ClientRequestReply{
+		case cRequest := <-rf.crProcessChan:
+			go func(rChan chan *ClientRequestReply) {
+				time.Sleep(time.Duration(CRDelay) * time.Millisecond)
+				rChan <- &ClientRequestReply{
 					IsLeader: false,
 				}
-				break
-		*/
+			}(cRequest.ReplyChan)
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
 			break
