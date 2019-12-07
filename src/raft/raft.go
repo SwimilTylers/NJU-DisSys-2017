@@ -175,7 +175,7 @@ func (rf *Raft) readPersist(data []byte) {
 		d.Decode(&bufLog)
 		copy(rf.log[:rf.lastLogIndex+1], bufLog)
 
-		DPrintln(rf.me, "Read @", rf.currentTerm, "=>", rf.voteFor, bufLog[:])
+		//DPrintln(rf.me, "Read @", rf.currentTerm, "=>", rf.voteFor, bufLog[:])
 	}
 }
 
@@ -247,13 +247,13 @@ func (rf *Raft) decideIfGranted(args *RequestVoteArgs) bool {
 	return isGranted
 }
 
-func (rf *Raft) HandleRequestVote(args *RequestVoteArgs, rChan chan *RequestVoteReply) {
+func (rf *Raft) handleRequestVote(args *RequestVoteArgs, rChan chan *RequestVoteReply) {
 	if rf.decideIfGranted(args) {
 		rf.role = Follower
 		rf.voteFor = args.CandidateId
 		// persist voteFor
 		rf.persist()
-		DPrintln(rf.me, "vote for", rf.voteFor)
+		//DPrintln(rf.me, "vote for", rf.voteFor)
 
 		rChan <- &RequestVoteReply{
 			Term:        rf.currentTerm,
@@ -368,14 +368,13 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	reply.Success = feedback.Success
 }
 
-func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) bool {
+func (rf *Raft) handleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendEntriesReply) bool {
 	//DPrintln(rf.me, "HAE", rf.currentTerm, "##", rf.commitIndex, "/", rf.lastLogIndex, rf.log[:7], "##", args)
 	var success = true
 	var reset = -1
 	if args.Term < rf.currentTerm {
 		success = false
 	} else if args.PrevLogIndex != -1 && (rf.log[args.PrevLogIndex] == nil || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm) {
-		// todo: check the meaning of the following description:
 		// 'Reply false if log does not contain an entry at prevLogIndex whose Term matches prevLogTerm (§5.3)'
 		// figure out whether it equals our if-condition
 		// DPrintln(rf.me, "reject", args.PrevLogIndex+1, "because", args.PrevLogIndex != -1, rf.log[args.PrevLogIndex] == nil, rf.log[args.PrevLogIndex].Term != args.PrevLogTerm)
@@ -383,7 +382,7 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 		reset = rf.findResetTo(args.PrevLogTerm)
 	} else if args.Entries != nil {
 		startIdx := args.PrevLogIndex + 1
-		DPrintln("replica", rf.me, "receives", args.Entries, "start from", startIdx)
+		//DPrintln("replica", rf.me, "receives", args.Entries, "start from", startIdx)
 		for idx, entry := range args.Entries {
 			relIdx := startIdx + idx
 
@@ -416,7 +415,7 @@ func (rf *Raft) HandleAppendEntries(args *AppendEntriesArgs, rChan chan *AppendE
 	return success
 }
 
-func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestReply, reRChan chan *ReplicatingEntriesReply) {
+func (rf *Raft) appendOneEntry(command interface{}, crRChan chan *ClientRequestReply, reRChan chan *ReplicatingEntriesReply) {
 	rf.lastLogIndex++
 	rf.log[rf.lastLogIndex] = &Instance{
 		Term:    rf.currentTerm,
@@ -435,15 +434,15 @@ func (rf *Raft) AppendOneEntry(command interface{}, crRChan chan *ClientRequestR
 
 	for id := 0; id < len(rf.peers); id++ {
 		if id != rf.me {
-			DPrintln(rf.me, "replicates to", id, ":", rf.lastLogIndex, "=>", rf.log[rf.lastLogIndex])
-			rf.LogReplication(id, rf.nextIndex[id], reRChan)
+			//DPrintln(rf.me, "replicates to", id, ":", rf.lastLogIndex, "=>", rf.log[rf.lastLogIndex])
+			rf.logReplication(id, rf.nextIndex[id], reRChan)
 		}
 	}
 }
 
-func (rf *Raft) LogReplication(toId int, nextIndex int, rChan chan *ReplicatingEntriesReply) {
+func (rf *Raft) logReplication(toId int, nextIndex int, rChan chan *ReplicatingEntriesReply) {
 	if rf.lastLogIndex < nextIndex {
-		DPrintln(rf.me, "lagging", rf.lastLogIndex, "vs.", nextIndex)
+		//DPrintln(rf.me, "lagging", rf.lastLogIndex, "vs.", nextIndex)
 		return
 	}
 
@@ -562,7 +561,7 @@ func (rf *Raft) updateCurrentTerm(term int) bool {
 		// persist currentTerm and voteFor
 		rf.persist()
 
-		DPrintln(rf.me, "Term =", term)
+		//DPrintln(rf.me, "Term =", term)
 		return true
 	} else {
 		return false
@@ -596,7 +595,7 @@ func (rf *Raft) updateLeaderCommitIndex() bool {
 		matches[idx] = match
 	}
 
-	DPrintln(rf.me, "finds matches is", matches)
+	//DPrintln(rf.me, "finds matches is", matches)
 
 	sort.Sort(sort.Reverse(sort.IntSlice(matches)))
 
@@ -645,7 +644,7 @@ func (rf *Raft) findResetTo(prevTerm int) int {
 func (rf *Raft) Exec() {
 	for rf.lastApplied < rf.commitIndex {
 		rf.lastApplied++
-		DPrintln(rf.me, "execute", rf.lastApplied, "/", rf.commitIndex, rf.log[rf.lastApplied])
+		//DPrintln(rf.me, "execute", rf.lastApplied, "/", rf.commitIndex, rf.log[rf.lastApplied])
 		rf.crApplyChan <- ApplyMsg{
 			Index:       rf.lastApplied + 1, // modification, internal log array starts at 0, but cfg's starts at 1
 			Command:     rf.log[rf.lastApplied].Command,
@@ -688,7 +687,7 @@ func (rf *Raft) toBeCandidate() {
 				if rf.updateCurrentTerm(arPair.Args.Term) {
 					rf.role = Follower
 				}
-				rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
+				rf.handleRequestVote(arPair.Args, arPair.ReplyChan)
 				break
 			case reply := <-collectChan:
 				if rf.updateCurrentTerm(reply.Term) {
@@ -705,7 +704,7 @@ func (rf *Raft) toBeCandidate() {
 				args := arPair.Args
 
 				// second case: receive AE from new leader
-				DPrintln("receive AE:", args)
+				//DPrintln("receive AE:", args)
 				if args.Term >= rf.currentTerm {
 					// at least as large as currentTerm
 					rf.updateCurrentTerm(args.Term)
@@ -715,7 +714,7 @@ func (rf *Raft) toBeCandidate() {
 					rf.persist()
 				}
 
-				if rf.HandleAppendEntries(args, arPair.ReplyChan) {
+				if rf.handleAppendEntries(args, arPair.ReplyChan) {
 					rf.updateCommitIndex(args.Term, args.LeaderCommit)
 					rf.Exec()
 				}
@@ -730,7 +729,7 @@ func (rf *Raft) toBeCandidate() {
 			*/
 			case <-time.After(timeout):
 				// third case: timeout
-				DPrintln(rf.me, "timeout @", rf.currentTerm)
+				//DPrintln(rf.me, "timeout @", rf.currentTerm)
 				reelect = true
 				break
 			}
@@ -739,7 +738,7 @@ func (rf *Raft) toBeCandidate() {
 }
 
 func (rf *Raft) toBeLeader() {
-	DPrintln(rf.me, "Be a Leader @", rf.currentTerm)
+	//DPrintln(rf.me, "Be a Leader @", rf.currentTerm)
 	// threshold := int(math.Ceil(float64(len(rf.peers)+1)/2)) - 1
 
 	collectChan := rf.bcHeartBeat()
@@ -756,7 +755,7 @@ func (rf *Raft) toBeLeader() {
 
 	reRChan := make(chan *ReplicatingEntriesReply, ChannelSpaceSize)
 
-	DPrintln(rf.me, "run leader routine @", rf.currentTerm)
+	//DPrintln(rf.me, "run leader routine @", rf.currentTerm)
 
 	// take leader routines
 
@@ -766,7 +765,7 @@ func (rf *Raft) toBeLeader() {
 			if rf.updateCurrentTerm(arPair.Args.Term) {
 				rf.role = Follower
 			}
-			rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
+			rf.handleRequestVote(arPair.Args, arPair.ReplyChan)
 			break
 		case arPair := <-rf.aeProcessChan:
 			args := arPair.Args
@@ -779,7 +778,7 @@ func (rf *Raft) toBeLeader() {
 				rf.persist()
 			}
 
-			if rf.HandleAppendEntries(args, arPair.ReplyChan) {
+			if rf.handleAppendEntries(args, arPair.ReplyChan) {
 				rf.updateCommitIndex(args.Term, args.LeaderCommit)
 				rf.Exec()
 			}
@@ -791,7 +790,7 @@ func (rf *Raft) toBeLeader() {
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
-			rf.AppendOneEntry(cRequest.Command, cRequest.ReplyChan, reRChan)
+			rf.appendOneEntry(cRequest.Command, cRequest.ReplyChan, reRChan)
 			break
 		case reply := <-reRChan:
 			if rf.updateCurrentTerm(reply.AEReply.Term) {
@@ -802,7 +801,6 @@ func (rf *Raft) toBeLeader() {
 					upTo := reply.StartIndex + reply.Len - 1
 					rf.updateNextIndexMatchIndex(reply.Follower, upTo)
 					if rf.updateLeaderCommitIndex() {
-						// todo: execute command
 						rf.Exec()
 					}
 				} else {
@@ -817,17 +815,17 @@ func (rf *Raft) toBeLeader() {
 							}
 						*/
 
-						DPrintln(reply, "$=>", reply.AEReply)
+						//DPrintln(reply, "$=>", reply.AEReply)
 						if !reply.Retry {
 							rf.nextIndex[id] = reply.AEReply.PossibleNextIndex
 							rf.matchIndex[id] = 0
 
-							DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex, "reset to", rf.nextIndex[id])
+							//DPrintln("Replication failed: from", id, "startIndex is", reply.StartIndex, "reset to", rf.nextIndex[id])
 						} else {
-							DPrintln("Replication restart: from", id, "startIndex is", reply.StartIndex)
+							//DPrintln("Replication restart: from", id, "startIndex is", reply.StartIndex)
 						}
 						// retry
-						rf.LogReplication(id, rf.nextIndex[id], reRChan)
+						rf.logReplication(id, rf.nextIndex[id], reRChan)
 					}
 				}
 			}
@@ -840,17 +838,17 @@ func (rf *Raft) toBeLeader() {
 }
 
 func (rf *Raft) toBeFollower() {
-	DPrintln(rf.me, "Be a follower")
+	//DPrintln(rf.me, "Be a follower")
 
 	for rf.role == Follower {
 		select {
 		case arPair := <-rf.rvProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
-			rf.HandleRequestVote(arPair.Args, arPair.ReplyChan)
+			rf.handleRequestVote(arPair.Args, arPair.ReplyChan)
 			break
 		case arPair := <-rf.aeProcessChan:
 			rf.updateCurrentTerm(arPair.Args.Term)
-			if rf.HandleAppendEntries(arPair.Args, arPair.ReplyChan) {
+			if rf.handleAppendEntries(arPair.Args, arPair.ReplyChan) {
 				rf.updateCommitIndex(arPair.Args.Term, arPair.Args.LeaderCommit)
 				rf.Exec()
 			}
@@ -903,7 +901,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	term := -1
 	isLeader := false
 
-	DPrintln(rf.me, "receive request", command)
+	//DPrintln(rf.me, "receive request", command)
 
 	rChan := make(chan *ClientRequestReply, 1)
 
@@ -923,7 +921,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		}
 		break
 	case <-time.After(time.Duration(CRTimeout) * time.Millisecond):
-		DPrintln("Request no response:", command, "@", rf.me)
+		//DPrintln("Request no response:", command, "@", rf.me)
 		break
 	}
 
