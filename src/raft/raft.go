@@ -76,6 +76,15 @@ type ClientRequestArgsReplyPair struct {
 	ReplyChan chan *ClientRequestReply
 }
 
+type GetStateArgsReplyPair struct {
+	ReplyChan chan *GetStateReply
+}
+
+type GetStateReply struct {
+	Term     int
+	IsLeader bool
+}
+
 //
 // as each Raft peer becomes aware that successive log Entries are
 // committed, the peer should send an ApplyMsg to the service (or
@@ -114,6 +123,7 @@ type Raft struct {
 
 	rvProcessChan chan *RequestVoteArgsReplyPair
 	aeProcessChan chan *AppendEntriesArgsReplyPair
+	gsProcessChan chan *GetStateArgsReplyPair
 
 	// volatile states, for leaders
 	nextIndex  []int
@@ -127,14 +137,11 @@ type Raft struct {
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
+	rChan := make(chan *GetStateReply, 1)
+	rf.gsProcessChan <- &GetStateArgsReplyPair{ReplyChan: rChan}
+	reply := <-rChan
 
-	var term int
-	var isleader bool
-	// Your code here.
-	term = rf.currentTerm
-	isleader = rf.role == Leader
-
-	return term, isleader
+	return reply.Term, reply.IsLeader
 }
 
 //
@@ -722,13 +729,15 @@ func (rf *Raft) toBeCandidate() {
 
 				break
 			case cRequest := <-rf.crProcessChan:
-				go func(rChan chan *ClientRequestReply) {
-					time.Sleep(time.Duration(CRDelay) * time.Millisecond)
-					rChan <- &ClientRequestReply{
-						IsLeader: false,
-					}
-				}(cRequest.ReplyChan)
+				cRequest.ReplyChan <- &ClientRequestReply{
+					IsLeader: false,
+				}
 				break
+			case gs := <-rf.gsProcessChan:
+				gs.ReplyChan <- &GetStateReply{
+					Term:     rf.currentTerm,
+					IsLeader: rf.role == Leader,
+				}
 			case <-time.After(timeout):
 				// third case: timeout
 				//DPrintln(rf.me, "timeout @", rf.currentTerm)
@@ -794,6 +803,11 @@ func (rf *Raft) toBeLeader() {
 		case cRequest := <-rf.crProcessChan:
 			rf.appendOneEntry(cRequest.Command, cRequest.ReplyChan, reRChan)
 			break
+		case gs := <-rf.gsProcessChan:
+			gs.ReplyChan <- &GetStateReply{
+				Term:     rf.currentTerm,
+				IsLeader: rf.role == Leader,
+			}
 		case reply := <-reRChan:
 			if rf.updateCurrentTerm(reply.AEReply.Term) {
 				rf.role = Follower
@@ -856,12 +870,14 @@ func (rf *Raft) toBeFollower() {
 			}
 			break
 		case cRequest := <-rf.crProcessChan:
-			go func(rChan chan *ClientRequestReply) {
-				time.Sleep(time.Duration(CRDelay) * time.Millisecond)
-				rChan <- &ClientRequestReply{
-					IsLeader: false,
-				}
-			}(cRequest.ReplyChan)
+			cRequest.ReplyChan <- &ClientRequestReply{
+				IsLeader: false,
+			}
+		case gs := <-rf.gsProcessChan:
+			gs.ReplyChan <- &GetStateReply{
+				Term:     rf.currentTerm,
+				IsLeader: rf.role == Leader,
+			}
 		case <-time.After(time.Duration(HBTimeout) * time.Millisecond):
 			rf.role = Candidate
 			break
@@ -920,6 +936,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 			isLeader = true
 		} else {
 			isLeader = false
+			time.Sleep(time.Duration(CRDelay) * time.Millisecond)
 		}
 		break
 	case <-time.After(time.Duration(CRTimeout) * time.Millisecond):
@@ -968,6 +985,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		role:          Follower,
 		rvProcessChan: make(chan *RequestVoteArgsReplyPair, ChannelSpaceSize),
 		aeProcessChan: make(chan *AppendEntriesArgsReplyPair, ChannelSpaceSize),
+		gsProcessChan: make(chan *GetStateArgsReplyPair, ChannelSpaceSize),
 		nextIndex:     make([]int, len(peers)),
 		matchIndex:    make([]int, len(peers)),
 		crProcessChan: make(chan *ClientRequestArgsReplyPair, ChannelSpaceSize),
